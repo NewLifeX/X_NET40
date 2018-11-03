@@ -63,11 +63,12 @@ namespace XCode.DataAccessLayer
 
             SqlCeVer = SQLCEVersion.SQLCE40;
 
-            if (!String.IsNullOrEmpty(FileName) && File.Exists(FileName))
+            var fn = DatabaseName;
+            if (!fn.IsNullOrEmpty() && File.Exists(fn))
             {
                 try
                 {
-                    SqlCeVer = SqlCeHelper.DetermineVersion(FileName);
+                    SqlCeVer = SqlCeHelper.DetermineVersion(fn);
                 }
                 catch (Exception ex)
                 {
@@ -100,11 +101,11 @@ namespace XCode.DataAccessLayer
         #region 方法
         /// <summary>创建数据库会话</summary>
         /// <returns></returns>
-        protected override IDbSession OnCreateSession() { return new SqlCeSession(this); }
+        protected override IDbSession OnCreateSession() => new SqlCeSession(this);
 
         /// <summary>创建元数据对象</summary>
         /// <returns></returns>
-        protected override IMetaData OnCreateMetaData() { return new SqlCeMetaData(); }
+        protected override IMetaData OnCreateMetaData() => new SqlCeMetaData();
         #endregion
 
         #region 数据库特性
@@ -190,16 +191,17 @@ namespace XCode.DataAccessLayer
         }
 
         /// <summary>返回数据源的架构信息</summary>
+        /// <param name="conn">连接</param>
         /// <param name="collectionName">指定要返回的架构的名称。</param>
         /// <param name="restrictionValues">为请求的架构指定一组限制值。</param>
         /// <returns></returns>
-        public override DataTable GetSchema(String collectionName, String[] restrictionValues)
+        public override DataTable GetSchema(DbConnection conn, String collectionName, String[] restrictionValues)
         {
             //sqlce3.5 不支持GetSchema
             if (SqlCe.SqlCeProviderVersion < SQLCEVersion.SQLCE40 && collectionName.EqualIgnoreCase(DbMetaDataCollectionNames.MetaDataCollections))
                 return null;
-            else
-                return base.GetSchema(collectionName, restrictionValues);
+
+            return base.GetSchema(conn, collectionName, restrictionValues);
         }
     }
 
@@ -393,7 +395,7 @@ namespace XCode.DataAccessLayer
         #endregion
 
         /// <summary>数据类型映射</summary>
-        private static Dictionary<Type, String[]> _DataTypes = new Dictionary<Type, String[]>
+        private static readonly Dictionary<Type, String[]> _DataTypes = new Dictionary<Type, String[]>
         {
             { typeof(Byte[]), new String[] { "varbinary({0})", "timestamp", "binary({0})", "image" } },
             { typeof(Guid), new String[] { "uniqueidentifier" } },
@@ -543,7 +545,7 @@ namespace XCode.DataAccessLayer
             catch { return null; }
         }
 
-        public void Dispose() { Engine.TryDispose(); }
+        public void Dispose() => Engine.TryDispose();
 
         public SqlCeEngine CreateDatabase() { Engine.Invoke("CreateDatabase"); return this; }
 

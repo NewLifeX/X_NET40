@@ -37,7 +37,7 @@ namespace NewLife.Serialization
                     Host.Write((Byte)0);
                     return true;
                 case TypeCode.DateTime:
-                    Write((DateTime)value);
+                    Write(((DateTime)value).ToInt());
                     return true;
                 case TypeCode.Decimal:
                     Write((Decimal)value);
@@ -107,7 +107,7 @@ namespace NewLife.Serialization
                     value = DBNull.Value;
                     return true;
                 case TypeCode.DateTime:
-                    value = ReadDateTime();
+                    value = ReadInt32().ToDateTime();
                     return true;
                 case TypeCode.Decimal:
                     value = ReadDecimal();
@@ -346,20 +346,6 @@ namespace NewLife.Serialization
             Write(buffer);
         }
         #endregion
-
-        #region 时间日期
-        /// <summary>使用Unix时间格式</summary>
-        private static DateTime _Base = new DateTime(1970, 1, 1);
-
-        /// <summary>将一个时间日期写入</summary>
-        /// <param name="value">数值</param>
-        public virtual void Write(DateTime value)
-        {
-            // 默认保存微秒
-            var ts = value - _Base;
-            Write((Int64)ts.TotalMilliseconds);
-        }
-        #endregion
         #endregion
 
         #region 基元类型读取
@@ -460,7 +446,7 @@ namespace NewLife.Serialization
         #region 字符串
         /// <summary>从当前流中读取下一个字符，并根据所使用的 Encoding 和从流中读取的特定字符，提升流的当前位置。</summary>
         /// <returns></returns>
-        public virtual Char ReadChar() { return Convert.ToChar(ReadByte()); }
+        public virtual Char ReadChar() => Convert.ToChar(ReadByte());
 
         /// <summary>从当前流中读取一个字符串。字符串有长度前缀，一次 7 位地被编码为整数。</summary>
         /// <returns></returns>
@@ -468,8 +454,8 @@ namespace NewLife.Serialization
         {
             // 先读长度
             var n = Host.ReadSize();
-            if (n < 0) return null;
-            if (n == 0) return String.Empty;
+            if (n <= 0) return null;
+            //if (n == 0) return String.Empty;
 
             var buffer = ReadBytes(n);
 
@@ -488,22 +474,6 @@ namespace NewLife.Serialization
                 data[i] = ReadInt32();
             }
             return new Decimal(data);
-        }
-
-        /// <summary>读取一个时间日期</summary>
-        /// <returns></returns>
-        public virtual DateTime ReadDateTime()
-        {
-            // 默认识别为微秒，如果太小，就按秒来算
-            var ms = ReadInt64();
-
-            var dt = _Base.AddMilliseconds(ms);
-            //if (dt.Year > 1970) return dt;
-
-            //var dt2 = _Base.AddSeconds(ms);
-            //if (dt2.Year < 3000) return dt2;
-
-            return dt;
         }
         #endregion
 

@@ -5,6 +5,7 @@ using System.Security.Principal;
 using System.Text;
 using System.Threading;
 using System.Web;
+using NewLife.Common;
 using NewLife.Model;
 using NewLife.Web;
 using XCode.Model;
@@ -186,10 +187,12 @@ namespace XCode.Membership
         {
             Current = null;
 
+#if !__CORE__
             // 注销时销毁所有Session
             var context = HttpContext.Current;
             var ss = context?.Session;
             ss?.Clear();
+#endif
 
             // 销毁Cookie
             this.SaveCookie(null, TimeSpan.FromDays(-1));
@@ -338,18 +341,15 @@ namespace XCode.Membership
         /// <param name="context">Http上下文，兼容NetCore</param>
         public static void SetPrincipal(this IManageProvider provider, IServiceProvider context = null)
         {
-#if __CORE__
-            var ctx = context as Microsoft.AspNetCore.Http.HttpContext;
-#else
+#if !__CORE__
+            //var ctx = context as Microsoft.AspNetCore.Http.HttpContext;
             var ctx = context as HttpContext ?? HttpContext.Current;
-#endif
             if (ctx == null) return;
 
             var user = provider.GetCurrent(context);
             if (user == null) return;
 
-            var id = user as IIdentity;
-            if (id == null || ctx.User?.Identity == id) return;
+            if (!(user is IIdentity id) || ctx.User?.Identity == id) return;
 
             // 角色列表
             var roles = new List<String>();
@@ -358,6 +358,7 @@ namespace XCode.Membership
             var up = new GenericPrincipal(id, roles.ToArray());
             ctx.User = up;
             Thread.CurrentPrincipal = up;
+#endif
         }
 
         /// <summary>尝试登录。如果Session未登录则借助Cookie</summary>
@@ -404,26 +405,30 @@ namespace XCode.Membership
             var cookie = req?.Cookies[key];
             if (cookie == null) return null;
 
-            var user = HttpUtility.UrlDecode(cookie["u"]);
-            var pass = cookie["p"];
-            var exp = cookie["e"].ToInt(-1);
-            if (user.IsNullOrEmpty() || pass.IsNullOrEmpty() || exp <= 0) return null;
+            var m = new CookieModel();
+            if (!m.Read(cookie, SysConfig.Current.InstallTime.ToFullString())) return null;
+
+            var user = HttpUtility.UrlDecode(m.UserName);
+            //var user = HttpUtility.UrlDecode(cookie["u"]);
+            //var pass = cookie["p"];
+            //var exp = cookie["e"].ToInt(-1);
+            if (user.IsNullOrEmpty() || m.Password.IsNullOrEmpty()) return null;
 
             // 判断有效期
-            var expire = new DateTime(1970, 1, 1).AddSeconds(exp);
-            if (expire < DateTime.Now) return null;
+            //var expire = exp.ToDateTime();
+            if (m.Expire < DateTime.Now) return null;
 
             var u = provider.FindByName(user);
             if (u == null || !u.Enable) return null;
 
             var mu = u as IAuthUser;
-            if (!pass.EqualIgnoreCase(mu.Password.MD5())) return null;
+            if (!m.Password.EqualIgnoreCase(mu.Password.MD5())) return null;
 
             // 保存登录信息
             if (autologin)
             {
                 mu.SaveLogin(null);
-                LogProvider.Provider.WriteLog("用户", "自动登录", user + " Expire=" + expire.ToFullString(), u.ID, u + "");
+                LogProvider.Provider.WriteLog("用户", "自动登录", $"{user} Time={m.Time} Expire={m.Expire}", u.ID, u + "");
             }
 
             return u;
@@ -452,22 +457,15 @@ namespace XCode.Membership
             {
                 var u = HttpUtility.UrlEncode(user.Name);
                 var p = !au.Password.IsNullOrEmpty() ? au.Password.MD5() : null;
-                if (reqcookie == null || u != reqcookie["u"] || p != reqcookie["p"])
-                {
-                    // 只有需要写入Cookie时才设置，否则会清空原来的非会话Cookie
-                    var cookie = res.Cookies[key];
-                    cookie.HttpOnly = true;
-                    cookie["u"] = u;
-                    cookie["p"] = p;
 
-                    // 过期时间
-                    if (expire.TotalSeconds >= 1)
-                    {
-                        var exp = DateTime.Now.Add(expire);
-                        cookie.Expires = exp;
-                        cookie["e"] = (Int32)((exp - new DateTime(1970, 1, 1)).TotalSeconds) + "";
-                    }
-                }
+                var m = new CookieModel
+                {
+                    UserName = u,
+                    Password = p,
+                    Time = DateTime.Now,
+                    Expire = DateTime.Now.Add(expire)
+                };
+                m.Write(res.Cookies[key], SysConfig.Current.InstallTime.ToFullString());
             }
             else
             {
@@ -478,25 +476,52 @@ namespace XCode.Membership
 #endif
         }
 
-        ///// <summary>设置会话超时时间</summary>
-        ///// <param name="provider">提供者</param>
-        ///// <param name="expire"></param>
-        ///// <param name="context">Http上下文，兼容NetCore</param>
-        //public static void SetCookie(this IManageProvider provider, TimeSpan expire, IServiceProvider context = null)
-        //{
-        //    var key = GetCookieKey(provider);
+#if !__CORE__
+        class CookieModel
+        {
+        #region 属性
+            public String UserName { get; set; }
+            public String Password { get; set; }
+            public DateTime Time { get; set; }
+            public DateTime Expire { get; set; }
+            public String Sign { get; set; }
+        #endregion
 
-        //    if (context == null) context = HttpContext.Current;
-        //    var res = context?.GetService<HttpResponse>();
+        #region 方法
+            public Boolean Read(HttpCookie cookie, String key)
+            {
+                UserName = cookie["u"];
+                Password = cookie["p"];
+                Time = (cookie["t"] + "").ToInt().ToDateTime();
+                Expire = (cookie["e"] + "").ToInt().ToDateTime();
+                Sign = cookie["s"];
 
-        //    var cookie = res.Cookies[key];
-        //    if (cookie != null)
-        //    {
-        //        var exp = DateTime.Now.Add(expire);
-        //        cookie.Expires = exp;
-        //        cookie["e"] = (Int32)((exp - new DateTime(1970, 1, 1)).TotalSeconds) + "";
-        //    }
-        //}
+                var str = $"u={UserName}&p={Password}&t={Time.ToInt()}&e={Expire.ToInt()}&k={key}";
+
+                return str.MD5() == Sign;
+            }
+
+            public void Write(HttpCookie cookie, String key)
+            {
+                cookie.HttpOnly = true;
+                cookie["u"] = UserName;
+                cookie["p"] = Password;
+
+                var dt = Time;
+                cookie["t"] = dt.ToInt() + "";
+
+                var exp = Expire;
+                cookie.Expires = exp;
+                cookie["e"] = exp.ToInt() + "";
+
+                var str = $"u={UserName}&p={Password}&t={Time.ToInt()}&e={Expire.ToInt()}&k={key}";
+                Sign = str.MD5();
+
+                cookie["s"] = Sign;
+            }
+        #endregion
+        }
+#endif
         #endregion
     }
 }

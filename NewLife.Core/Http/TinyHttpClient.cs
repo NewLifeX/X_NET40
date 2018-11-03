@@ -8,12 +8,11 @@ using System.Threading;
 using System.Threading.Tasks;
 using NewLife.Collections;
 using NewLife.Data;
-using NewLife.Log;
 using NewLife.Net;
 
 namespace NewLife.Http
 {
-    /// <summary>迷你Http客户端</summary>
+    /// <summary>迷你Http客户端。不支持https和302跳转</summary>
     public class TinyHttpClient : DisposeBase
     {
         #region 属性
@@ -31,6 +30,9 @@ namespace NewLife.Http
 
         /// <summary>状态码</summary>
         public Int32 StatusCode { get; set; }
+
+        /// <summary>超时时间。默认15000ms</summary>
+        public Int32 Timeout { get; set; } = 15000;
 
         /// <summary>头部集合</summary>
         public IDictionary<String, String> Headers { get; set; } = new NullableDictionary<String, String>(StringComparer.OrdinalIgnoreCase);
@@ -51,9 +53,8 @@ namespace NewLife.Http
         /// <summary>异步请求</summary>
         /// <param name="remote"></param>
         /// <param name="request"></param>
-        /// <param name="response"></param>
         /// <returns></returns>
-        protected virtual async Task<Packet> SendDataAsync(NetUri remote, Packet request, Packet response)
+        protected virtual async Task<Packet> SendDataAsync(NetUri remote, Packet request)
         {
             var tc = Client;
             NetworkStream ns = null;
@@ -65,14 +66,18 @@ namespace NewLife.Http
                 ns = tc?.GetStream();
                 active = tc != null && tc.Connected && ns != null && ns.CanWrite && ns.CanRead;
             }
-            catch (Exception ex) { XTrace.WriteException(ex); }
+            catch { }
 
             // 如果连接不可用，则重新建立连接
             if (!active)
             {
                 tc.TryDispose();
                 tc = new TcpClient();
+#if NET4
+                tc.Connect(remote.Address, remote.Port);
+#else
                 await tc.ConnectAsync(remote.Address, remote.Port);
+#endif
 
                 Client = tc;
                 ns = tc.GetStream();
@@ -82,20 +87,24 @@ namespace NewLife.Http
             //await ns.WriteAsync(data, 0, data.Length);
             if (request != null) await request.CopyToAsync(ns);
 
-            var source = new CancellationTokenSource(15000);
-
             // 接收
-            var count = await ns.ReadAsync(response.Data, response.Offset, response.Count, source.Token);
+            var buf = new Byte[64 * 1024];
+#if NET4
+            var count = ns.Read(buf, 0, buf.Length);
+#else
+            var source = new CancellationTokenSource(Timeout);
 
-            return response.Sub(0, count);
+            var count = await ns.ReadAsync(buf, 0, buf.Length, source.Token);
+#endif
+
+            return new Packet(buf, 0, count);
         }
 
         /// <summary>异步发出请求，并接收响应</summary>
         /// <param name="url"></param>
         /// <param name="data"></param>
-        /// <param name="response"></param>
         /// <returns></returns>
-        protected virtual async Task<Packet> SendAsync(String url, Byte[] data, Packet response)
+        public virtual async Task<Packet> SendAsync(String url, Byte[] data)
         {
             var uri = new Uri(url);
             var remote = new NetUri(NetType.Tcp, uri.Host, uri.Port);
@@ -106,7 +115,7 @@ namespace NewLife.Http
             StatusCode = -1;
 
             // 发出请求
-            var rs = await SendDataAsync(remote, req, response);
+            var rs = await SendDataAsync(remote, req);
             if (rs == null || rs.Count == 0) return null;
 
             // 解析响应
@@ -115,7 +124,7 @@ namespace NewLife.Http
             // 头部和主体分两个包回来
             if (rs != null && rs.Count == 0 && ContentLength != 0)
             {
-                rs = await SendDataAsync(null, null, response);
+                rs = await SendDataAsync(null, null);
             }
 
             // chunk编码
@@ -134,7 +143,7 @@ namespace NewLife.Http
 
             var method = data != null && data.Length > 0 ? "POST" : "GET";
 
-            var header = new StringBuilder();
+            var header = Pool.StringBuilder.Get();
             header.AppendLine($"{method} {uri.PathAndQuery} HTTP/1.1");
             header.AppendLine($"Host: {uri.Host}");
 
@@ -148,7 +157,7 @@ namespace NewLife.Http
 
             header.AppendLine();
 
-            var req = new Packet(header.ToString().GetBytes());
+            var req = new Packet(header.Put(true).GetBytes());
 
             // 请求主体数据
             if (data != null && data.Length > 0) req.Next = new Packet(data);
@@ -156,8 +165,8 @@ namespace NewLife.Http
             return req;
         }
 
-        private static Byte[] NewLine4 = new[] { (Byte)'\r', (Byte)'\n', (Byte)'\r', (Byte)'\n' };
-        private static Byte[] NewLine3 = new[] { (Byte)'\r', (Byte)'\n', (Byte)'\n' };
+        private static readonly Byte[] NewLine4 = new[] { (Byte)'\r', (Byte)'\n', (Byte)'\r', (Byte)'\n' };
+        private static readonly Byte[] NewLine3 = new[] { (Byte)'\r', (Byte)'\n', (Byte)'\n' };
         /// <summary>解析响应</summary>
         /// <param name="rs"></param>
         /// <returns></returns>
@@ -168,7 +177,7 @@ namespace NewLife.Http
             if (p < 0) p = rs.IndexOf(NewLine3);
             if (p < 0) return null;
 
-            var str = rs.ReadBytes(0, p).ToStr();
+            var str = rs.ToStr(Encoding.ASCII, 0, p);
             var lines = str.Split("\r\n");
 
             // HTTP/1.1 502 Bad Gateway
@@ -201,10 +210,10 @@ namespace NewLife.Http
 
             if (hs.TryGetValue("Connection", out str) && str.EqualIgnoreCase("Close")) Client.TryDispose();
 
-            return rs.Sub(p + 4, len);
+            return rs.Slice(p + 4, len);
         }
 
-        private static Byte[] NewLine = new[] { (Byte)'\r', (Byte)'\n' };
+        private static readonly Byte[] NewLine = new[] { (Byte)'\r', (Byte)'\n' };
         private Packet ParseChunk(Packet rs)
         {
             // chunk编码
@@ -214,7 +223,7 @@ namespace NewLife.Http
             if (p <= 0) return rs;
 
             // 第一段长度
-            var str = rs.Sub(0, p).ToStr();
+            var str = rs.Slice(0, p).ToStr();
             //if (str.Length % 2 != 0) str = "0" + str;
             //var len = (Int32)str.ToHex().ToUInt32(0, false);
             //Int32.TryParse(str, NumberStyles.HexNumber, null, out var len);
@@ -222,7 +231,7 @@ namespace NewLife.Http
 
             if (ContentLength < 0) ContentLength = len;
 
-            var pk = rs.Sub(p + 2, len);
+            var pk = rs.Slice(p + 2, len);
 
             // 暂时不支持多段编码
 
@@ -230,51 +239,17 @@ namespace NewLife.Http
         }
         #endregion
 
-        #region 缓冲池
-        class MyPool : Pool<Byte[]>
-        {
-            protected override Byte[] Create() => new Byte[64 * 1024];
-        }
-
-        private static MyPool _Pool = new MyPool
-        {
-            Max = 1000,
-            Min = 2,
-            IdleTime = 10,
-            AllIdleTime = 60,
-        };
-        #endregion
-
         #region 主要方法
-        /// <summary>异步发出请求，并接收响应</summary>
-        /// <param name="url">地址</param>
-        /// <param name="data">POST数据</param>
-        /// <returns></returns>
-        public async Task<Byte[]> SendAsync(String url, Byte[] data)
-        {
-            using (var pi = _Pool.AcquireItem())
-            {
-                // 发出请求
-                var rs = await SendAsync(url, data, pi.Value);
-                if (rs == null || rs.Count == 0) return null;
-
-                return rs.ToArray();
-            }
-        }
-
         /// <summary>异步获取</summary>
         /// <param name="url">地址</param>
         /// <returns></returns>
         public async Task<String> GetAsync(String url)
         {
-            using (var pi = _Pool.AcquireItem())
-            {
-                // 发出请求
-                var rs = await SendAsync(url, null, pi.Value);
-                if (rs == null || rs.Count == 0) return null;
+            // 发出请求
+            var rs = await SendAsync(url, null);
+            if (rs == null || rs.Count == 0) return null;
 
-                return rs?.ToStr();
-            }
+            return rs?.ToStr();
         }
         #endregion
     }

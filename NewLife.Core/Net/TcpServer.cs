@@ -5,6 +5,7 @@ using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using NewLife.Log;
+using NewLife.Model;
 
 namespace NewLife.Net
 {
@@ -53,20 +54,17 @@ namespace NewLife.Net
         /// <summary>启用Http，数据处理时截去请求响应头，默认false</summary>
         public Boolean EnableHttp { get; set; }
 
-        ///// <summary>粘包处理接口</summary>
-        //public IPacketFactory SessionPacket { get; set; }
-
         /// <summary>管道</summary>
         public IPipeline Pipeline { get; set; }
 
         /// <summary>会话统计</summary>
-        public PerfCounter StatSession { get; set; }
+        public ICounter StatSession { get; set; }
 
         /// <summary>发送统计</summary>
-        public PerfCounter StatSend { get; set; }
+        public ICounter StatSend { get; set; }
 
         /// <summary>接收统计</summary>
-        public PerfCounter StatReceive { get; set; }
+        public ICounter StatReceive { get; set; }
         #endregion
 
         #region 构造
@@ -80,7 +78,7 @@ namespace NewLife.Net
             MaxAsync = Environment.ProcessorCount * 16 / 10;
             _Sessions = new SessionCollection(this);
 
-            Log = Logger.Null;
+            if (Setting.Current.Debug) Log = XTrace.Log;
         }
 
         /// <summary>构造TCP服务器对象</summary>
@@ -110,20 +108,24 @@ namespace NewLife.Net
             if (StatSend == null) StatSend = new PerfCounter();
             if (StatReceive == null) StatReceive = new PerfCounter();
 
+            var sock = Client;
+
             // 开始监听
             //if (Server == null) Server = new TcpListener(Local.EndPoint);
-            if (Client == null) Client = NetHelper.CreateTcp(Local.EndPoint.Address.IsIPv4());
+            if (sock == null) Client = sock = NetHelper.CreateTcp(Local.EndPoint.Address.IsIPv4());
 
             WriteLog("Start {0}", this);
 
             // 三次握手之后，Accept之前的总连接个数，队列满之后，新连接将得到主动拒绝ConnectionRefused错误
             // 在我（大石头）的开发机器上，实际上这里的最大值只能是200，大于200跟200一个样
             //Server.Start();
-            Client.Bind(Local.EndPoint);
-            Client.Listen(Int32.MaxValue);
+            sock.Bind(Local.EndPoint);
+            sock.Listen(Int32.MaxValue);
 
-            Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
-            Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.DontLinger, true);
+#if !__CORE__
+            sock.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
+            sock.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.DontLinger, true);
+#endif
 
             Active = true;
 
@@ -245,24 +247,21 @@ namespace NewLife.Net
         {
             var session = CreateSession(client);
 
-            // 设置心跳时间，默认10秒
-            client.SetTcpKeepAlive(true);
+            //// 设置心跳时间，默认10秒
+            //client.SetTcpKeepAlive(true);
 
             if (_Sessions.Add(session))
             {
-                //session.ID = g_ID++;
                 // 会话改为原子操作，避免多线程冲突
                 session.ID = Interlocked.Increment(ref g_ID);
-                //WriteLog("{0}新会话 {1}", this, client.Client.RemoteEndPoint);
                 session.WriteLog("New {0}", session.Remote.EndPoint);
 
-                StatSession?.Increment(1);
+                StatSession?.Increment(1, 0);
 
                 NewSession?.Invoke(this, new SessionEventArgs { Session = session });
 
-                //// 自动开始异步接收处理
-                //if (AutoReceiveAsync) 
-                session.ReceiveAsync();
+                // 自动开始异步接收处理
+                session.Start();
             }
         }
         #endregion
@@ -278,16 +277,22 @@ namespace NewLife.Net
         protected virtual TcpSession CreateSession(Socket client)
         {
             //var session = EnableHttp ? new HttpSession(this, client) : new TcpSession(this, client);
-            var session = new TcpSession(this, client);
-            // 服务端不支持掉线重连
-            session.AutoReconnect = 0;
-            session.Log = Log;
-            session.LogSend = LogSend;
-            session.LogReceive = LogReceive;
-            session.StatSend = StatSend;
-            session.StatReceive = StatReceive;
-            session.ProcessAsync = ProcessAsync;
-            session.Pipeline = Pipeline;
+            var session = new TcpSession(this, client)
+            {
+                // 服务端不支持掉线重连
+                AutoReconnect = 0,
+                NoDelay = true,
+                Log = Log,
+                LogSend = LogSend,
+                LogReceive = LogReceive,
+                StatSend = StatSend,
+                StatReceive = StatReceive,
+                ProcessAsync = ProcessAsync,
+                Pipeline = Pipeline
+            };
+
+            // 为了降低延迟，服务端不要合并小包
+            client.NoDelay = true;
 
             return session;
         }

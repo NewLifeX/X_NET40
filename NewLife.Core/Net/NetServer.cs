@@ -98,13 +98,13 @@ namespace NewLife.Net
         public Boolean UseSession { get; set; } = true;
 
         /// <summary>会话统计</summary>
-        public PerfCounter StatSession { get; set; }
+        public ICounter StatSession { get; set; }
 
         /// <summary>发送统计</summary>
-        public PerfCounter StatSend { get; set; }
+        public ICounter StatSend { get; set; }
 
         /// <summary>接收统计</summary>
-        public PerfCounter StatReceive { get; set; }
+        public ICounter StatReceive { get; set; }
 
         /// <summary>是否输出发送日志。默认false</summary>
         public Boolean LogSend { get; set; }
@@ -204,7 +204,7 @@ namespace NewLife.Net
 
             server.Name = String.Format("{0}{1}{2}", Name, server.Local.IsTcp ? "Tcp" : "Udp", server.Local.Address.IsIPv4() ? "" : "6");
             // 内部服务器日志更多是为了方便网络库调试，而网络服务器日志用于应用开发
-            server.Log = SocketLog ?? Log;
+            if (SocketLog != null) server.Log = SocketLog;
             server.NewSession += Server_NewSession;
 
             if (SessionTimeout > 0) server.SessionTimeout = SessionTimeout;
@@ -320,7 +320,7 @@ namespace NewLife.Net
                         if (elm != item && elm.Port == 0) elm.Port = Port;
                     }
                 }
-                if (item.Port <= 0) WriteLog("开始监听 {0}", item);
+                /*if (item.Port <= 0)*/ WriteLog("开始监听 {0}", item);
             }
         }
 
@@ -391,7 +391,7 @@ namespace NewLife.Net
             ns.Host = this;
             ns.Server = session.Server;
             ns.Session = session;
-            if (ns is NetSession) (ns as NetSession).Log = SessionLog ?? Log;
+            if (ns is NetSession ns2) ns2.Log = SessionLog ?? Log;
 
             if (UseSession) AddSession(ns);
 
@@ -554,7 +554,11 @@ namespace NewLife.Net
 
                         // 协议端口不能是已经被占用
                         //if (!NetHelper.IsUsed(svr.Local.ProtocolType, svr.Local.Address, svr.Port)) list.Add(svr);
+#if __CORE__
+                        list.Add(svr);
+#else
                         if (!svr.Local.CheckPort()) list.Add(svr);
+#endif
                     }
                     break;
                 default:
@@ -575,13 +579,13 @@ namespace NewLife.Net
         /// <returns></returns>
         public String GetStat()
         {
-            var sb = new StringBuilder();
+            var sb = Pool.StringBuilder.Get();
             if (MaxSessionCount > 0) sb.AppendFormat("在线：{0:n0}/{1:n0} ", SessionCount, MaxSessionCount);
             if (StatSend.Value > 0) sb.AppendFormat("发送：{0} ", StatSend);
             if (StatReceive.Value > 0) sb.AppendFormat("接收：{0} ", StatReceive);
-            if (StatSession.Value > 0) sb.AppendFormat("会话：{0} ", StatSession);
+            //if (StatSession.Value > 0) sb.AppendFormat("会话：{0} ", StatSession);
 
-            return sb.ToString();
+            return sb.Put(true);
         }
         #endregion
 
@@ -632,13 +636,13 @@ namespace NewLife.Net
 
             if (servers.Count == 1) return Name + " " + servers[0].ToString();
 
-            var sb = new StringBuilder();
+            var sb = Pool.StringBuilder.Get();
             foreach (var item in servers)
             {
                 if (sb.Length > 0) sb.Append(" ");
                 sb.Append(item);
             }
-            return Name + " " + sb.ToString();
+            return Name + " " + sb.Put(true);
         }
         #endregion
     }

@@ -2,6 +2,7 @@
 using System.Data;
 using System.Data.Common;
 using NewLife.Collections;
+using NewLife.Log;
 
 namespace XCode.DataAccessLayer
 {
@@ -13,7 +14,7 @@ namespace XCode.DataAccessLayer
     /// 3，空闲时间10s
     /// 4，完全空闲时间60s
     /// </remarks>
-    public class ConnectionPool : Pool<DbConnection>
+    public class ConnectionPool : ObjectPool<DbConnection>
     {
         #region 属性
         /// <summary>工厂</summary>
@@ -38,9 +39,18 @@ namespace XCode.DataAccessLayer
 
         /// <summary>创建时连接数据库</summary>
         /// <returns></returns>
-        protected override DbConnection Create()
+        protected override DbConnection OnCreate()
         {
-            var conn = Factory.CreateConnection();
+            var conn = Factory?.CreateConnection();
+            if (conn == null)
+            {
+                var msg = $"连接创建失败！请检查驱动是否正常";
+
+                WriteLog("CreateConnection failure " + msg);
+
+                throw new Exception(Name + " " + msg);
+            }
+
             conn.ConnectionString = ConnectionString;
 
             try
@@ -57,30 +67,33 @@ namespace XCode.DataAccessLayer
         }
 
         /// <summary>申请时检查是否打开</summary>
-        /// <param name="value"></param>
-        protected override Boolean OnAcquire(DbConnection value)
+        public override DbConnection Get()
         {
-            try
-            {
-                if (value.State == ConnectionState.Closed) value.Open();
+            var value = base.Get();
+            if (value.State == ConnectionState.Closed) value.Open();
 
-                return true;
-            }
-            catch { return false; }
+            return value;
         }
 
         /// <summary>释放时，返回是否有效。无效对象将会被抛弃</summary>
         /// <param name="value"></param>
-        protected override Boolean OnRelease(DbConnection value)
+        protected override Boolean OnPut(DbConnection value) => value.State == ConnectionState.Open;
+
+        /// <summary>借一个连接执行指定操作</summary>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="callback"></param>
+        /// <returns></returns>
+        public T Execute<T>(Func<DbConnection, T> callback)
         {
+            var conn = Get();
             try
             {
-                //// 如果连接字符串变了，则关闭
-                //if (value.ConnectionString != ConnectionString) value.Close();
-
-                return value.State == ConnectionState.Open;
+                return callback(conn);
             }
-            catch { return false; }
+            finally
+            {
+                Put(conn);
+            }
         }
     }
 }

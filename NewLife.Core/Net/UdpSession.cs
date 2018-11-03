@@ -1,13 +1,14 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading.Tasks;
 using NewLife.Collections;
 using NewLife.Data;
 using NewLife.Log;
+using NewLife.Model;
+using NewLife.Threading;
 
 namespace NewLife.Net
 {
@@ -27,8 +28,8 @@ namespace NewLife.Net
         /// <summary>底层Socket</summary>
         Socket ISocket.Client => Server?.Client;
 
-        /// <summary>数据流</summary>
-        public Stream Stream { get; set; }
+        ///// <summary>数据流</summary>
+        //public Stream Stream { get; set; }
 
         private NetUri _Local;
         /// <summary>本地地址</summary>
@@ -74,10 +75,10 @@ namespace NewLife.Net
         public Boolean ProcessAsync { get { return Server.ProcessAsync; } set { Server.ProcessAsync = value; } }
 
         /// <summary>发送数据包统计信息</summary>
-        public PerfCounter StatSend { get; set; }
+        public ICounter StatSend { get; set; }
 
         /// <summary>接收数据包统计信息</summary>
-        public PerfCounter StatReceive { get; set; }
+        public ICounter StatReceive { get; set; }
 
         /// <summary>通信开始时间</summary>
         public DateTime StartTime { get; private set; }
@@ -93,7 +94,7 @@ namespace NewLife.Net
         public UdpSession(UdpServer server, IPEndPoint remote)
         {
             Name = server.Name;
-            Stream = new MemoryStream();
+            //Stream = new MemoryStream();
             StartTime = DateTime.Now;
 
             Server = server;
@@ -114,6 +115,10 @@ namespace NewLife.Net
             Server.Open();
 
             WriteLog("New {0}", Remote.EndPoint);
+
+            // 管道
+            var pp = Pipeline;
+            pp?.Open(Server.CreateContext(this));
         }
 
         protected override void OnDispose(Boolean disposing)
@@ -121,6 +126,10 @@ namespace NewLife.Net
             base.OnDispose(disposing);
 
             WriteLog("Close {0}", Remote.EndPoint);
+
+            // 管道
+            var pp = Pipeline;
+            pp?.Close(Server.CreateContext(this), disposing ? "Dispose" : "GC");
 
             // 释放对服务对象的引用，如果没有其它引用，服务对象将会被回收
             Server = null;
@@ -138,12 +147,34 @@ namespace NewLife.Net
         /// <summary>发送消息</summary>
         /// <param name="message"></param>
         /// <returns></returns>
-        public virtual Boolean SendMessage(Object message) => Pipeline.FireWrite(this, message);
+        public virtual Boolean SendMessage(Object message)
+        {
+            var ctx = Server.CreateContext(this);
+            message = Pipeline.Write(ctx, message);
+
+            return ctx.FireWrite(message);
+        }
 
         /// <summary>发送消息并等待响应</summary>
         /// <param name="message"></param>
         /// <returns></returns>
-        public virtual async Task<Object> SendAsync(Object message) => await Pipeline.FireWriteAndWait(this, message);
+        public virtual Task<Object> SendMessageAsync(Object message)
+        {
+            var ctx = Server.CreateContext(this);
+            var source = new TaskCompletionSource<Object>();
+            ctx["TaskSource"] = source;
+
+            message = Pipeline.Write(ctx, message);
+
+#if NET4
+            if (!ctx.FireWrite(message)) return TaskEx.FromResult((Object)null);
+#else
+            if (!ctx.FireWrite(message)) return Task.FromResult((Object)null);
+#endif
+
+            return source.Task;
+        }
+
         #endregion
 
         #region 接收
@@ -169,14 +200,14 @@ namespace NewLife.Net
 
         internal void OnReceive(ReceivedEventArgs e)
         {
-            LastTime = DateTime.Now;
+            LastTime = TimerX.Now;
 
             if (e != null) Received?.Invoke(this, e);
         }
 
         /// <summary>处理数据帧</summary>
         /// <param name="data">数据帧</param>
-        public virtual void Receive(IData data) => OnReceive(data as ReceivedEventArgs);
+        void ISocketRemote.Process(IData data) => OnReceive(data as ReceivedEventArgs);
         #endregion
 
         #region 异常处理

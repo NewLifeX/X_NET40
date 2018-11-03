@@ -2,11 +2,11 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using NewLife;
 using NewLife.Log;
 using NewLife.Threading;
-using XCode.DataAccessLayer;
 
 namespace XCode
 {
@@ -30,7 +30,7 @@ namespace XCode
         public Int32 Period { get; set; } = 1000;
 
         /// <summary>最大个数，超过该个数时，进入队列将产生堵塞。默认10000</summary>
-        public Int32 MaxEntity { get; set; } = 100_000;
+        public Int32 MaxEntity { get; set; } = 10_000;
 
         /// <summary>保存速度，每秒保存多少个实体</summary>
         public Int32 Speed { get; private set; }
@@ -49,7 +49,6 @@ namespace XCode
         public EntityQueue(IEntitySession session)
         {
             Session = session;
-            _Timer = new TimerX(Work, null, Period, Period, "EQ") { Async = true };
         }
         #endregion
 
@@ -60,12 +59,27 @@ namespace XCode
         /// <returns>返回是否添加成功，实体对象已存在于队列中则返回false</returns>
         public Boolean Add(IEntity entity, Int32 msDelay)
         {
+            // 首次使用时初始化定时器
+            if (_Timer == null)
+            {
+                lock (this)
+                {
+                    if (_Timer == null)
+                    {
+                        _Timer = new TimerX(Work, null, Period, Period, "EQ") { Async = true };
+                        _Timer.CanExecute = () => DelayEntities.Any() || Entities.Any();
+                    }
+                }
+            }
+
             var rs = false;
             if (msDelay <= 0)
                 rs = Entities.TryAdd(entity, entity);
             else
                 rs = DelayEntities.TryAdd(entity, TimerX.Now.AddMilliseconds(msDelay));
             if (!rs) return false;
+
+            Interlocked.Increment(ref _count);
 
             // 超过最大值时，堵塞一段时间，等待消费完成
             while (_count >= MaxEntity)
@@ -86,12 +100,14 @@ namespace XCode
 
             // 检查是否有延迟保存
             var ds = DelayEntities;
-            if (!ds.IsEmpty)
+            if (ds.Any())
             {
                 var now = TimerX.Now;
                 foreach (var item in ds)
                 {
                     if (item.Value < now) list.Add(item.Key);
+
+                    n++;
                 }
                 // 从列表删除过期
                 foreach (var item in list)
@@ -99,12 +115,12 @@ namespace XCode
                     ds.Remove(item);
                 }
 
-                n += ds.Count;
+                //n += ds.Count;
             }
 
             // 检查是否有近实时保存
             var es = Entities;
-            if (!es.IsEmpty)
+            if (es.Any())
             {
                 // 为了速度，不拷贝，直接创建一个新的集合
                 Entities = new ConcurrentDictionary<IEntity, IEntity>();
@@ -113,13 +129,14 @@ namespace XCode
                 n += es.Count;
             }
 
-            _count = n;
+            //_count = n;
 
             if (list.Count > 0)
             {
-                Process(list);
+                //_count -= list.Count;
+                Interlocked.Add(ref _count, -list.Count);
 
-                _count -= list.Count;
+                Process(list);
             }
         }
 
@@ -128,7 +145,6 @@ namespace XCode
             var list = state as ICollection<IEntity>;
             var ss = Session;
             var dal = ss.Dal;
-            var useTrans = dal.DbType == DatabaseType.SQLite;
 
             var speed = Speed;
             if (Debug || list.Count > 100_000)
@@ -137,44 +153,37 @@ namespace XCode
                 XTrace.WriteLine($"实体队列[{ss.TableName}/{ss.ConnName}]\t保存 {list.Count:n0}\t预测耗时 {cost:n0}ms");
             }
 
-            var rs = new List<Int32>();
             var sw = Stopwatch.StartNew();
 
-            // 开启事务保存
-            if (useTrans) dal.BeginTransaction();
-            try
+            // 分批
+            var batchSize = 5000;
+            for (var i = 0; i < list.Count();)
             {
-                // 禁用自动关闭连接
-                dal.Session.SetAutoClose(false);
+                var batch = list.Skip(i).Take(batchSize).ToList();
 
-                foreach (var item in list)
+                try
                 {
-                    try
-                    {
-                        // 加入队列时已经Valid一次，这里不需要再次Valid
-                        rs.Add(item.SaveWithoutValid());
-                    }
-                    catch (Exception ex)
-                    {
-                        if (Error != null)
-                            Error(this, new EventArgs<Exception>(ex));
-                        else
-                            XTrace.WriteException(ex);
-                    }
+                    batch.SaveWithoutValid();
+                }
+                catch (Exception ex)
+                {
+                    //// 保存失败，写回去
+                    //foreach (var entity in list)
+                    //{
+                    //    Entities.TryAdd(entity, entity);
+                    //}
+                    //Interlocked.Add(ref _count, list.Count);
+
+                    if (Error != null)
+                        Error(this, new EventArgs<Exception>(ex));
+                    else
+                        XTrace.WriteException(ex);
                 }
 
-                if (useTrans) dal.Commit();
+                i += batch.Count;
             }
-            catch
-            {
-                if (useTrans) dal.Rollback();
-                throw;
-            }
-            finally
-            {
-                sw.Stop();
-                dal.Session.SetAutoClose(null);
-            }
+
+            sw.Stop();
 
             // 根据繁忙程度动态调节
             // 大于1000个对象时，说明需要加快持久化间隔，缩小周期
@@ -200,17 +209,8 @@ namespace XCode
             Speed = ms == 0 ? 0 : (Int32)(list.Count * 1000 / ms);
             if (Debug || list.Count > 10000)
             {
-                XTrace.WriteLine($"实体队列[{ss.TableName}/{ss.ConnName}]\t耗时 {ms:n0}ms\t速度 {speed:n0}tps\t周期 {p:n0}ms");
+                XTrace.WriteLine($"实体队列[{ss.TableName}/{ss.ConnName}]\t保存 {list.Count:n0}\t耗时 {ms:n0}ms\t速度 {speed:n0}tps\t周期 {p:n0}ms");
             }
-
-            //if (Completed != null)
-            //{
-            //    var k = 0;
-            //    foreach (var item in list)
-            //    {
-            //        Completed(this, new EventArgs<IEntity, Int32>(item, rs[k++]));
-            //    }
-            //}
 
             // 马上再来一次，以便于连续处理数据
             _Timer.SetNext(-1);

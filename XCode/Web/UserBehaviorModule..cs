@@ -6,8 +6,10 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Web;
 using System.Web.UI;
+using NewLife.Collections;
 using NewLife.Log;
 using NewLife.Model;
+using NewLife.Threading;
 using NewLife.Web;
 using XCode.Membership;
 #if !NET4
@@ -65,10 +67,15 @@ namespace XCode.Web
             var ip = WebHelper.UserHost;
 
             var page = GetPage(req);
+
+            // 过滤后缀
+            var ext = Path.GetExtension(page);
+            if (!ext.IsNullOrEmpty() && ExcludeSuffixes.Contains(ext)) return;
+
             var title = GetTitle(ctx, req);
             var msg = GetMessage(ctx, req, title);
 
-            TaskEx.Run(() =>
+            ThreadPoolX.QueueUserWorkItem(() =>
             {
                 try
                 {
@@ -90,7 +97,7 @@ namespace XCode.Web
 
         String GetMessage(HttpContext ctx, HttpRequest req, String title)
         {
-            var sb = new StringBuilder(256);
+            var sb = Pool.StringBuilder.Get();
 
             if (!title.IsNullOrEmpty()) sb.Append(title + " ");
             sb.AppendFormat("{0} {1}", req.HttpMethod, req.RawUrl);
@@ -101,7 +108,7 @@ namespace XCode.Web
             var ts = DateTime.Now - ctx.Timestamp;
             sb.AppendFormat(" {0:n0}ms", ts.TotalMilliseconds);
 
-            return sb.ToString();
+            return sb.Put(true);
         }
 
         String GetTitle(HttpContext ctx, HttpRequest req)
@@ -143,10 +150,6 @@ namespace XCode.Web
         void SaveBehavior(IManageUser user, String ip, String page, String msg)
         {
             if (page.IsNullOrEmpty()) return;
-
-            // 过滤后缀
-            var ext = Path.GetExtension(page);
-            if (!ext.IsNullOrEmpty() && ExcludeSuffixes.Contains(ext)) return;
 
             LogProvider.Provider?.WriteLog("访问", "记录", msg, user?.ID ?? 0, user + "", ip);
         }

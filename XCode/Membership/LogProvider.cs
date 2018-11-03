@@ -2,6 +2,7 @@
 using System.Linq;
 using System.Text;
 using System.Web;
+using NewLife.Collections;
 using NewLife.Log;
 using NewLife.Model;
 using NewLife.Reflection;
@@ -50,10 +51,10 @@ namespace XCode.Membership
             var fact = EntityFactory.CreateOperate(entity.GetType());
 
             // 构造字段数据的字符串表示形式
-            var sb = new StringBuilder();
+            var sb = Pool.StringBuilder.Get();
             foreach (var fi in fact.Fields)
             {
-                if (action == "修改" && !fi.PrimaryKey && !entity.Dirtys[fi.Name]) continue;
+                if (action == "修改" && !fi.PrimaryKey && !entity.IsDirty(fi.Name)) continue;
                 var v = entity[fi.Name];
                 // 空字符串不写日志
                 if (action == "添加" || action == "删除")
@@ -70,7 +71,15 @@ namespace XCode.Membership
                 sb.Separate(",").Append("{0}={1}".F(fi.Name, v));
             }
 
-            WriteLog(entity.GetType(), action, sb.ToString());
+            var userid = 0;
+            var name = "";
+            if (entity is IManageUser user)
+            {
+                userid = user.ID;
+                name = user + "";
+            }
+
+            WriteLog(entity.GetType(), action, sb.Put(true), userid, name);
         }
 
         /// <summary>是否使用日志</summary>
@@ -108,10 +117,7 @@ namespace XCode.Membership
         #endregion
 
         #region 静态属性
-        static LogProvider()
-        {
-            ObjectContainer.Current.AutoRegister<LogProvider, DefaultLogProvider>();
-        }
+        static LogProvider() => ObjectContainer.Current.AutoRegister<LogProvider, DefaultLogProvider>();
 
         private static LogProvider _Provider;
         /// <summary>当前成员提供者</summary>

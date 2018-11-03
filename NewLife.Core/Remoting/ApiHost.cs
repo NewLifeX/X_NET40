@@ -5,11 +5,13 @@ using NewLife.Collections;
 using NewLife.Data;
 using NewLife.Log;
 using NewLife.Messaging;
+using NewLife.Model;
+using NewLife.Net.Handlers;
 
 namespace NewLife.Remoting
 {
     /// <summary>Api主机</summary>
-    public abstract class ApiHost : DisposeBase, IApiHost
+    public abstract class ApiHost : DisposeBase, IApiHost, IExtend
     {
         #region 属性
         /// <summary>名称</summary>
@@ -21,11 +23,14 @@ namespace NewLife.Remoting
         /// <summary>处理器</summary>
         public IApiHandler Handler { get; set; }
 
+        /// <summary>调用超时时间。请求发出后，等待响应的最大时间，默认15_000ms</summary>
+        public Int32 Timeout { get; set; } = 15_000;
+
         /// <summary>发送数据包统计信息</summary>
-        public PerfCounter StatSend { get; set; } = new PerfCounter();
+        public ICounter StatInvoke { get; set; }
 
         /// <summary>接收数据包统计信息</summary>
-        public PerfCounter StatReceive { get; set; } = new PerfCounter();
+        public ICounter StatProcess { get; set; }
 
         /// <summary>用户会话数据</summary>
         public IDictionary<String, Object> Items { get; set; } = new NullableDictionary<String, Object>();
@@ -70,6 +75,12 @@ namespace NewLife.Remoting
         }
         #endregion
 
+        #region 方法
+        /// <summary>获取消息编码器。重载以指定不同的封包协议</summary>
+        /// <returns></returns>
+        public virtual IHandler GetMessageCodec() => new StandardCodec { Timeout = Timeout, UserPacket = false };
+        #endregion
+
         #region 请求处理
         /// <summary>处理消息</summary>
         /// <param name="session"></param>
@@ -79,9 +90,19 @@ namespace NewLife.Remoting
         {
             if (msg.Reply) return null;
 
-            StatReceive?.Increment();
-
-            return OnProcess(session, msg);
+            //StatReceive?.Increment();
+            var st = StatProcess;
+            //var sw = st == null ? 0 : Stopwatch.GetTimestamp();
+            var sw = st.StartCount();
+            try
+            {
+                return OnProcess(session, msg);
+            }
+            finally
+            {
+                //if (st != null) st.Increment(1, (Stopwatch.GetTimestamp() - sw) / 10);
+                st.StopCount(sw);
+            }
         }
 
         private IMessage OnProcess(IApiSession session, IMessage msg)
@@ -95,12 +116,14 @@ namespace NewLife.Remoting
             {
                 if (!ApiHostHelper.Decode(msg, out action, out _, out var args)) return null;
 
-                result = Handler.Execute(session, action, args);
+                result = OnProcess(session, action, args);
             }
             catch (Exception ex)
             {
                 ex = ex.GetTrue();
 
+                if (ShowError) WriteLog("{0}", ex);
+           
                 // 支持自定义错误
                 if (ex is ApiException aex)
                 {
@@ -118,8 +141,7 @@ namespace NewLife.Remoting
             if (msg is DefaultMessage dm && dm.OneWay) return null;
 
             // 编码响应数据包，二进制优先
-            var pk = result as Packet;
-            if (pk == null) pk = enc.Encode(action, code, result);
+            if (!(result is Packet pk)) pk = enc.Encode(action, code, result);
             pk = ApiHostHelper.Encode(action, code, pk);
 
             // 构造响应消息
@@ -129,6 +151,20 @@ namespace NewLife.Remoting
 
             return rs;
         }
+
+        /// <summary>执行</summary>
+        /// <param name="session"></param>
+        /// <param name="action"></param>
+        /// <param name="args"></param>
+        /// <returns></returns>
+        protected virtual Object OnProcess(IApiSession session, String action, Packet args) => Handler.Execute(session, action, args);
+        #endregion
+
+        #region 事件
+        /// <summary>新会话。服务端收到新连接，客户端每次连接或断线重连后，可用于做登录</summary>
+        /// <param name="session">会话</param>
+        /// <param name="state">状态。客户端ISocketClient</param>
+        public virtual void OnNewSession(IApiSession session, Object state) { }
         #endregion
 
         #region 日志
@@ -137,6 +173,9 @@ namespace NewLife.Remoting
 
         /// <summary>编码器日志</summary>
         public ILog EncoderLog { get; set; } = Logger.Null;
+
+        /// <summary>显示调用和处理错误。默认false</summary>
+        public Boolean ShowError { get; set; }
 
         /// <summary>写日志</summary>
         /// <param name="format"></param>

@@ -23,7 +23,15 @@ namespace NewLife.Agent
         #region 构造
         static AgentServiceBase()
         {
+            XTrace.UseConsole();
+
             if (_Instance == null) _Instance = new TService();
+        }
+
+        /// <summary>实例化，读取配置</summary>
+        public AgentServiceBase()
+        {
+            var set = Setting.Current;
         }
         #endregion
 
@@ -36,9 +44,24 @@ namespace NewLife.Agent
 
             var service = Instance as TService;
 
-            // 根据配置修改服务名
-            var name = Setting.Current.ServiceName;
-            if (!String.IsNullOrEmpty(name)) Instance.ServiceName = name;
+            // 初始化配置
+            var set = Setting.Current;
+            if (set.ServiceName.IsNullOrEmpty()) set.ServiceName = service.ServiceName;
+            if (set.DisplayName.IsNullOrEmpty()) set.DisplayName = service.DisplayName;
+            if (set.Description.IsNullOrEmpty()) set.Description = service.Description;
+
+            // 从程序集构造配置
+            var asm = AssemblyX.Entry;
+            if (set.ServiceName.IsNullOrEmpty()) set.ServiceName = asm.Name;
+            if (set.DisplayName.IsNullOrEmpty()) set.DisplayName = asm.Title;
+            if (set.Description.IsNullOrEmpty()) set.Description = asm.Description;
+
+            set.SaveAsync();
+
+            // 用配置覆盖
+            service.ServiceName = set.ServiceName;
+            service.DisplayName = set.DisplayName;
+            service.Description = set.Description;
 
             var Args = Environment.GetCommandLineArgs();
 
@@ -105,7 +128,6 @@ namespace NewLife.Agent
                 Console.Title = service.DisplayName;
 
                 #region 命令行
-                XTrace.UseConsole();
                 service.Log = XTrace.Log;
 
                 // 输出状态

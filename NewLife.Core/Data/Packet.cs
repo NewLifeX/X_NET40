@@ -2,6 +2,7 @@
 using System.IO;
 using System.Text;
 using System.Threading.Tasks;
+using NewLife.Collections;
 
 namespace NewLife.Data
 {
@@ -36,15 +37,37 @@ namespace NewLife.Data
         /// <param name="seg"></param>
         public Packet(ArraySegment<Byte> seg) => Set(seg.Array, seg.Offset, seg.Count);
 
-        // 下面代码需要.Net 4.6支持
-        //public Packet(MemoryStream stream)
-        //{
-        //    // 尝试抠了内部存储区，下面代码需要.Net 4.6支持
-        //    if (stream.TryGetBuffer(out var seg))
-        //        Set(seg.Array, seg.Offset, seg.Count);
-        //    else
-        //        Set(stream.ToArray());
-        //}
+        /// <summary>从可扩展内存流实例化</summary>
+        /// <param name="stream"></param>
+        public Packet(Stream stream)
+        {
+            // 下面代码需要.Net 4.6支持
+
+            //// 尝试抠了内部存储区，下面代码需要.Net 4.6支持
+            //if (stream.TryGetBuffer(out var seg))
+            //    Set(seg.Array, seg.Offset, seg.Count);
+            //else
+            //    Set(stream.ToArray());
+
+            if (stream is MemoryStream ms)
+            {
+                try
+                {
+#if NET46
+                    // 尝试抠了内部存储区，下面代码需要.Net 4.6支持
+                    if (stream.TryGetBuffer(out var seg))
+                        Set(seg.Array, seg.Offset, seg.Count);
+                    else
+#endif
+                    Set(ms.GetBuffer(), (Int32)ms.Position, (Int32)(ms.Length - ms.Position));
+
+                    return;
+                }
+                catch (UnauthorizedAccessException) { }
+            }
+
+            Set(stream.ToArray());
+        }
         #endregion
 
         #region 索引
@@ -53,16 +76,22 @@ namespace NewLife.Data
         /// <returns></returns>
         public Byte this[Int32 index]
         {
-            get { return Data[Offset + index]; }
+            get
+            {
+                var p = Offset + index;
+                if (p >= Data.Length && Next != null) return Next[p - Data.Length];
+
+                return Data[p];
+            }
             set { Data[Offset + index] = value; }
         }
         #endregion
 
         #region 方法
         /// <summary>设置新的数据区</summary>
-        /// <param name="data"></param>
-        /// <param name="offset"></param>
-        /// <param name="count"></param>
+        /// <param name="data">数据区</param>
+        /// <param name="offset">偏移</param>
+        /// <param name="count">字节个数</param>
         public virtual void Set(Byte[] data, Int32 offset = 0, Int32 count = -1)
         {
             Data = data;
@@ -81,11 +110,23 @@ namespace NewLife.Data
             }
         }
 
-        /// <summary>截取</summary>
-        /// <param name="offset"></param>
-        /// <param name="count"></param>
+        ///// <summary>设置子数据区</summary>
+        ///// <param name="offset">相对偏移</param>
+        ///// <param name="count">字节个数</param>
+        //public virtual void SetSub(Int32 offset, Int32 count = -1)
+        //{
+        //    Offset += offset;
+
+        //    if (count < 0) count = Count - offset;
+        //    if (count < 0) count = Data.Length - Offset;
+        //    Count = count;
+        //}
+
+        /// <summary>截取子数据区</summary>
+        /// <param name="offset">相对偏移</param>
+        /// <param name="count">字节个数</param>
         /// <returns></returns>
-        public Packet Sub(Int32 offset, Int32 count = -1)
+        public Packet Slice(Int32 offset, Int32 count = -1)
         {
             var start = Offset + offset;
             var remain = Count - offset;
@@ -101,7 +142,7 @@ namespace NewLife.Data
             else
             {
                 // 如果当前段用完，则取下一段
-                if (remain <= 0) return Next.Sub(offset - Count, count);
+                if (remain <= 0) return Next.Slice(offset - Count, count);
 
                 // 当前包用一截，剩下的全部
                 if (count < 0) return new Packet(Data, start, remain) { Next = Next };
@@ -110,7 +151,7 @@ namespace NewLife.Data
                 if (count <= remain) return new Packet(Data, start, count);
 
                 // 当前包用一截，剩下的再截取
-                return new Packet(Data, start, remain) { Next = Next.Sub(0, count - remain) };
+                return new Packet(Data, start, remain) { Next = Next.Slice(0, count - remain) };
             }
         }
 
@@ -123,22 +164,22 @@ namespace NewLife.Data
         {
             //return (Int32)IOHelper.IndexOf(Data, Offset, Count, data, offset, count);
 
-            var start = Offset + offset;
+            var start = offset;
             var length = data.Length;
 
-            if (count < 0 || count > Count - offset) count = Count - offset;
+            if (count < 0 || count > Total - offset) count = Total - offset;
 
             // 已匹配字节数
             var win = 0;
             // 索引加上data剩余字节数必须小于count
             for (var i = 0; i + length - win <= count; i++)
             {
-                if (Data[start + i] == data[win])
+                if (this[start + i] == data[win])
                 {
                     win++;
 
                     // 全部匹配，退出
-                    if (win >= length) return (start + i - Offset) - length + 1;
+                    if (win >= length) return (start + i) - length + 1;
                 }
                 else
                 {
@@ -173,10 +214,10 @@ namespace NewLife.Data
             if (Next == null) Data.ReadBytes(Offset, Count);
 
             // 链式包输出
-            var ms = new MemoryStream();
+            var ms = Pool.MemoryStream.Get();
             WriteTo(ms);
 
-            return ms.ToArray();
+            return ms.Put(true);
         }
 
         /// <summary>从封包中读取指定数据</summary>
@@ -194,7 +235,7 @@ namespace NewLife.Data
 
             // 链式包输出
             if (count < 0) count = Total - offset;
-            var ms = new MemoryStream();
+            var ms = Pool.MemoryStream.Get();
 
             // 遍历
             var cur = this;
@@ -204,7 +245,7 @@ namespace NewLife.Data
                 // 当前包不够用
                 if (len < offset)
                     offset -= len;
-                else
+                else if (cur.Data != null)
                 {
                     len -= offset;
                     if (len > count) len = count;
@@ -216,7 +257,7 @@ namespace NewLife.Data
 
                 cur = cur.Next;
             }
-            return ms.ToArray();
+            return ms.Put(true);
 
             //// 以上算法太复杂，直接来
             //return ToArray().ReadBytes(offset, count);
@@ -235,7 +276,8 @@ namespace NewLife.Data
         /// <returns></returns>
         public virtual MemoryStream GetStream()
         {
-            if (Next == null) return new MemoryStream(Data, Offset, Count, false);
+            //if (Next == null) return new MemoryStream(Data, Offset, Count, false);
+            if (Next == null) return new MemoryStream(Data, Offset, Count, false, true);
 
             var ms = new MemoryStream();
             WriteTo(ms);
@@ -288,15 +330,20 @@ namespace NewLife.Data
 
         /// <summary>以字符串表示</summary>
         /// <param name="encoding">字符串编码，默认URF-8</param>
+        /// <param name="offset"></param>
+        /// <param name="count"></param>
         /// <returns></returns>
-        public String ToStr(Encoding encoding = null)
+        public String ToStr(Encoding encoding = null, Int32 offset = 0, Int32 count = -1)
         {
             if (Data == null) return null;
             //if (Count == 0) return String.Empty;
 
-            if (Next == null) return Data.ToStr(encoding ?? Encoding.UTF8, Offset, Count);
+            if (encoding == null) encoding = Encoding.UTF8;
+            if (count < 0) count = Total - offset;
 
-            return ToArray().ToStr(encoding ?? Encoding.UTF8);
+            if (Next == null) return Data.ToStr(encoding, Offset + offset, count);
+
+            return ReadBytes(offset, count).ToStr(encoding);
         }
 
         /// <summary>以十六进制编码表示</summary>
@@ -322,7 +369,7 @@ namespace NewLife.Data
         /// <summary>重载类型转换，字节数组直接转为Packet对象</summary>
         /// <param name="value"></param>
         /// <returns></returns>
-        public static implicit operator Packet(Byte[] value) => new Packet(value);
+        public static implicit operator Packet(Byte[] value) => value == null ? null : new Packet(value);
 
         /// <summary>重载类型转换，一维数组直接转为Packet对象</summary>
         /// <param name="value"></param>

@@ -1,8 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Text;
 using System.Text.RegularExpressions;
+using NewLife.Collections;
 
 namespace NewLife.Web
 {
@@ -162,7 +162,7 @@ namespace NewLife.Web
         Int32 ParseVersion()
         {
             // 分割版本，_v1.0.0.0
-            var vs = Name.CutStart("_v", "_V", " v", " V");
+            var vs = Name.CutStart("_v", "_V", ".v", ".V", "v", " V");
             if (vs == Name)
             {
                 // 也可能没有v，但是这是必须有圆点
@@ -210,14 +210,12 @@ namespace NewLife.Web
         /// <returns></returns>
         public override String ToString()
         {
-            //return base.ToString();
-            //return "{0} {1} {2} {3}".F(Name, RawUrl, Version, Time);
-            var sb = new StringBuilder();
+            var sb = Pool.StringBuilder.Get();
             sb.AppendFormat("{0} {1}", Name, RawUrl);
             if (Version != null) sb.AppendFormat(" v{0}", Version);
             if (Time > DateTime.MinValue) sb.AppendFormat(" {0}", Time.ToFullString());
 
-            return sb.ToString();
+            return sb.Put(true);
         }
         #endregion
     }

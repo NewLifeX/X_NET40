@@ -4,6 +4,7 @@ using System.IO;
 using System.Threading.Tasks;
 using NewLife.Data;
 using NewLife.Messaging;
+using NewLife.Model;
 using NewLife.Threading;
 
 namespace NewLife.Net.Handlers
@@ -14,8 +15,8 @@ namespace NewLife.Net.Handlers
         /// <summary>消息队列。用于匹配请求响应包</summary>
         public IMatchQueue Queue { get; set; } = new DefaultMatchQueue();
 
-        /// <summary>调用超时时间。默认30000ms</summary>
-        public Int32 Timeout { get; set; } = 30000;
+        /// <summary>调用超时时间。默认30_000ms</summary>
+        public Int32 Timeout { get; set; } = 30_000;
 
         /// <summary>使用数据包，写入时数据包转消息，读取时消息自动解包返回数据负载。默认true</summary>
         public Boolean UserPacket { get; set; } = true;
@@ -59,7 +60,7 @@ namespace NewLife.Net.Handlers
             {
                 var timeout = Timeout;
                 //if (context.Session is ISocketClient client) timeout = client.Timeout;
-                Queue.Add(context.Session, msg, timeout, source);
+                Queue.Add(context.Owner, msg, timeout, source);
             }
         }
 
@@ -91,14 +92,14 @@ namespace NewLife.Net.Handlers
                     if (msg3.Reply)
                     {
                         //!!! 处理结果的Packet需要拷贝一份，否交给另一个线程使用会有冲突
-                        if (rs is IMessage msg4 && msg4.Payload == msg3.Payload) msg4.Payload = msg4.Payload.Clone();
-                        Queue.Match(context.Session, msg, rs, IsMatch);
+                        if (rs is IMessage msg4 && msg4.Payload != null && msg4.Payload == msg3.Payload) msg4.Payload = msg4.Payload.Clone();
+                        Queue.Match(context.Owner, msg, rs, IsMatch);
                     }
                 }
                 else if (rs != null)
                 {
                     // 其它消息不考虑响应
-                    Queue.Match(context.Session, msg, rs, IsMatch);
+                    Queue.Match(context.Owner, msg, rs, IsMatch);
                 }
 
                 // 匹配输入回调，让上层事件收到分包信息
@@ -127,10 +128,8 @@ namespace NewLife.Net.Handlers
         /// <param name="getLength">获取长度</param>
         /// <param name="expire">缓存有效期</param>
         /// <returns></returns>
-        protected virtual IList<Packet> Parse(Packet pk, CodecItem codec, Func<Stream, Int32> getLength, Int32 expire = 5000)
+        protected virtual IList<Packet> Parse(Packet pk, CodecItem codec, Func<Packet, Int32> getLength, Int32 expire = 5000)
         {
-            //if (offset < 0) return new Packet[] { pk };
-
             var _ms = codec.Stream;
             var nodata = _ms == null || _ms.Position < 0 || _ms.Position >= _ms.Length;
 
@@ -141,22 +140,24 @@ namespace NewLife.Net.Handlers
                 if (pk == null) return list.ToArray();
 
                 var idx = 0;
-                while (idx < pk.Count)
+                while (idx < pk.Total)
                 {
-                    var pk2 = new Packet(pk.Data, pk.Offset + idx, pk.Count - idx);
-                    //var len = GetLength(pk2.GetStream(), offset, size);
-                    var len = getLength(pk2.GetStream());
+                    //var pk2 = new Packet(pk.Data, pk.Offset + idx, pk.Total - idx);
+                    var pk2 = pk.Slice(idx);
+                    var len = getLength(pk2);
                     if (len <= 0 || len > pk2.Count) break;
 
-                    pk2 = new Packet(pk.Data, pk.Offset + idx, len);
+                    pk2.Set(pk2.Data, pk2.Offset, len);
+                    //pk2.SetSub(0, len);
                     list.Add(pk2);
                     idx += len;
                 }
                 // 如果没有剩余，可以返回
-                if (idx == pk.Count) return list.ToArray();
+                if (idx == pk.Total) return list.ToArray();
 
                 // 剩下的
-                pk = new Packet(pk.Data, pk.Offset + idx, pk.Count - idx);
+                //pk = new Packet(pk.Data, pk.Offset + idx, pk.Total - idx);
+                pk = pk.Slice(idx);
             }
 
             if (_ms == null) codec.Stream = _ms = new MemoryStream();
@@ -185,15 +186,19 @@ namespace NewLife.Net.Handlers
                 // 尝试解包
                 while (_ms.Position < _ms.Length)
                 {
-                    var p = _ms.Position;
-                    var len = getLength(_ms);
-                    _ms.Position = p;
+                    //var pk2 = new Packet(_ms.GetBuffer(), (Int32)_ms.Position, (Int32)_ms.Length);
+                    var pk2 = new Packet(_ms);
+                    var len = getLength(pk2);
 
                     // 资源不足一包
-                    if (len <= 0 || p + len > _ms.Length) break;
+                    if (len <= 0 || len > pk2.Total) break;
 
-                    var pk2 = new Packet(_ms.ReadBytes(len));
+                    // 解包成功
+                    pk2.Set(pk2.Data, pk2.Offset, len);
+                    //pk2.SetSub(0, len);
                     list.Add(pk2);
+
+                    _ms.Seek(len, SeekOrigin.Current);
                 }
 
                 // 如果读完了数据，需要重置缓冲区
@@ -208,60 +213,52 @@ namespace NewLife.Net.Handlers
         }
 
         /// <summary>从数据流中获取整帧数据长度</summary>
-        /// <param name="stream"></param>
+        /// <param name="pk"></param>
         /// <param name="offset"></param>
         /// <param name="size"></param>
         /// <returns>数据帧长度（包含头部长度位）</returns>
-        protected static Int32 GetLength(Stream stream, Int32 offset, Int32 size)
+        protected static Int32 GetLength(Packet pk, Int32 offset, Int32 size)
         {
-            if (offset < 0) return (Int32)(stream.Length - stream.Position);
+            if (offset < 0) return pk.Total - pk.Offset;
 
-            var p = stream.Position;
+            var p = pk.Offset;
             // 数据不够，连长度都读取不了
-            if (p + offset >= stream.Length) return 0;
-
-            // 移动到长度所在位置
-            if (offset > 0) stream.Seek(offset, SeekOrigin.Current);
+            if (offset >= pk.Total) return 0;
 
             // 读取大小
             var len = 0;
             switch (size)
             {
                 case 0:
-                    len = stream.ReadEncodedInt();
+                    var ms = pk.GetStream();
+                    if (offset > 0) ms.Seek(offset, SeekOrigin.Current);
+                    len = ms.ReadEncodedInt();
+                    len += (Int32)(ms.Position - offset);
                     break;
                 case 1:
-                    len = stream.ReadByte();
+                    len = pk[offset];
                     break;
                 case 2:
-                    len = stream.ReadBytes(2).ToInt();
+                    len = pk.ReadBytes(offset, 2).ToUInt16();
                     break;
                 case 4:
-                    len = (Int32)stream.ReadBytes(4).ToUInt32();
+                    len = (Int32)pk.ReadBytes(offset, 4).ToUInt32();
                     break;
                 case -2:
-                    len = stream.ReadBytes(2).ToUInt16(0, false);
+                    len = pk.ReadBytes(offset, 2).ToUInt16(0, false);
                     break;
                 case -4:
-                    len = (Int32)stream.ReadBytes(4).ToUInt32(0, false);
+                    len = (Int32)pk.ReadBytes(offset, 4).ToUInt32(0, false);
                     break;
                 default:
                     throw new NotSupportedException();
             }
 
             // 判断后续数据是否足够
-            if (stream.Position + len > stream.Length)
-            {
-                // 长度不足，恢复位置
-                stream.Position = p;
-                return 0;
-            }
+            if (len > pk.Total) return 0;
 
             // 数据长度加上头部长度
-            len += (Int32)(stream.Position - p);
-
-            // 恢复位置
-            stream.Position = p;
+            len += Math.Abs(size);
 
             return len;
         }

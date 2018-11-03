@@ -51,33 +51,6 @@
     <Compile Include="Application\LogServer.cs" />
     <Compile Include="Application\EchoServer.cs" />
     <Compile Include="Application\SerialServer.cs" />
-    <Compile Include="CoAP\CoAPMessage.cs" />
-    <Compile Include="Dhcp\DhcpClient.cs" />
-    <Compile Include="Dhcp\DhcpMessageType.cs" />
-    <Compile Include="Dhcp\DhcpEntity.cs" />
-    <Compile Include="Dhcp\DhcpOption.cs" />
-    <Compile Include="Dhcp\DhcpServer.cs" />
-    <Compile Include="Dhcp\DhcpSession.cs" />
-    <Compile Include="DNS\BinaryDNS.cs" />
-    <Compile Include="DNS\DNSClient.cs" />
-    <Compile Include="DNS\DNSEntity.cs" />
-    <Compile Include="DNS\DNSHeader.cs" />
-    <Compile Include="DNS\DNSNameAccessor.cs" />
-    <Compile Include="DNS\DNSOpcodeType.cs" />
-    <Compile Include="DNS\DNSQueryType.cs" />
-    <Compile Include="DNS\DNSRcodeType.cs" />
-    <Compile Include="DNS\DNSRecord.cs" />
-    <Compile Include="DNS\DNSServer.cs" />
-    <Compile Include="DNS\DNS_A.cs" />
-    <Compile Include="DNS\DNS_AAAA.cs" />
-    <Compile Include="DNS\DNS_CNAME.cs" />
-    <Compile Include="DNS\DNS_MX.cs" />
-    <Compile Include="DNS\DNS_NB.cs" />
-    <Compile Include="DNS\DNS_NS.cs" />
-    <Compile Include="DNS\DNS_PTR.cs" />
-    <Compile Include="DNS\DNS_SOA.cs" />
-    <Compile Include="DNS\DNS_TXT.cs" />
-    <Compile Include="DNS\NetBIOS.cs" />
     <Compile Include="Flash\SandBoxServer.cs" />
     <Compile Include="FTP\FTPClient.cs" />
     <Compile Include="FTP\FTPItem.cs" />
@@ -85,8 +58,6 @@
     <Compile Include="FTP\FTPSession.cs" />
     <Compile Include="FTP\FTPTransferMode.cs" />
     <Compile Include="Http\HttpCache.cs" />
-    <Compile Include="ISO\COTP.cs" />
-    <Compile Include="ISO\TPKT.cs" />
     <Compile Include="Modbus\DataStore.cs" />
     <Compile Include="Modbus\Errors.cs" />
     <Compile Include="Modbus\IDataStore.cs" />
@@ -99,9 +70,6 @@
     <Compile Include="Model\DataEventArgs.cs">
       <SubType>Code</SubType>
     </Compile>
-    <Compile Include="MQTT\MqttMessage.cs" />
-    <Compile Include="MQTT\MqttType.cs" />
-    <Compile Include="MQTT\QualityOfService.cs" />
     <Compile Include="Http\HttpHeader.cs" />
     <Compile Include="NTP\NTPClient.cs" />
     <Compile Include="Application\TimeServer.cs" />

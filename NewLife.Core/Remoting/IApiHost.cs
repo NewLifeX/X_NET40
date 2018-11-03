@@ -1,13 +1,13 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Text;
 using System.Threading.Tasks;
+using NewLife.Collections;
 using NewLife.Data;
 using NewLife.Log;
 using NewLife.Messaging;
+using NewLife.Model;
+using NewLife.Net;
 using NewLife.Reflection;
-using NewLife.Serialization;
 
 namespace NewLife.Remoting
 {
@@ -23,6 +23,10 @@ namespace NewLife.Remoting
         /// <summary>接口动作管理器</summary>
         IApiManager Manager { get; }
 
+        /// <summary>获取消息编码器。重载以指定不同的封包协议</summary>
+        /// <returns></returns>
+        IHandler GetMessageCodec();
+
         /// <summary>处理消息</summary>
         /// <param name="session"></param>
         /// <param name="msg"></param>
@@ -30,10 +34,10 @@ namespace NewLife.Remoting
         IMessage Process(IApiSession session, IMessage msg);
 
         /// <summary>发送统计</summary>
-        PerfCounter StatSend { get; set; }
+        ICounter StatInvoke { get; set; }
 
         /// <summary>接收统计</summary>
-        PerfCounter StatReceive { get; set; }
+        ICounter StatProcess { get; set; }
 
         /// <summary>日志</summary>
         ILog Log { get; set; }
@@ -55,11 +59,14 @@ namespace NewLife.Remoting
         /// <param name="args">参数</param>
         /// <param name="flag">标识</param>
         /// <returns></returns>
-        public static async Task<Object> InvokeAsync(IApiHost host, IApiSession session, Type resultType, String action, Object args, Byte flag)
+        public static async Task<Object> InvokeAsync(IApiHost host, Object session, Type resultType, String action, Object args, Byte flag)
         {
             if (session == null) return null;
 
-            host.StatSend?.Increment();
+            // 性能计数器，次数、TPS、平均耗时
+            //host.StatSend?.Increment();
+            var st = host.StatInvoke;
+            var sw = st.StartCount();
 
             // 编码请求
             var enc = host.Encoder;
@@ -69,8 +76,40 @@ namespace NewLife.Remoting
             var msg = new DefaultMessage { Payload = pk, };
             if (flag > 0) msg.Flag = flag;
 
-            var rs = await session.SendAsync(msg);
-            if (rs == null) return null;
+            var invoker = session;
+            IMessage rs = null;
+            try
+            {
+                if (session is IApiSession ss)
+                {
+                    var rs2 = await ss.SendAsync(msg);
+                    rs = rs2.Item1;
+                    if (rs2.Item2 != null) invoker = rs2.Item2;
+                }
+                else if (session is ISocketRemote client)
+                    rs = (await client.SendMessageAsync(msg)) as IMessage;
+                else
+                    throw new InvalidOperationException();
+                //rs = await session.SendAsync(msg);
+                if (rs == null) return null;
+            }
+            catch (AggregateException aggex)
+            {
+                var ex = aggex.GetTrue();
+                if (ex is TaskCanceledException)
+                {
+                    throw new TimeoutException($"请求[{action}]超时！", ex);
+                }
+                throw aggex;
+            }
+            catch (TaskCanceledException ex)
+            {
+                throw new TimeoutException($"请求[{action}]超时！", ex);
+            }
+            finally
+            {
+                st.StopCount(sw);
+            }
 
             // 特殊返回类型
             if (resultType == typeof(IMessage)) return rs;
@@ -79,7 +118,7 @@ namespace NewLife.Remoting
             if (!Decode(rs, out var act, out var code, out var data)) throw new InvalidOperationException();
 
             // 是否成功
-            if (code != 0) throw new ApiException(code, data.ToStr());
+            if (code != 0) throw new ApiException(code, $"远程[{invoker}]错误！ {data.ToStr()}");
 
             if (data == null) return null;
             if (resultType == typeof(Packet)) return data;
@@ -99,11 +138,13 @@ namespace NewLife.Remoting
         /// <param name="args">参数</param>
         /// <param name="flag">标识</param>
         /// <returns></returns>
-        public static Boolean Invoke(IApiHost host, IApiSession session, String action, Object args, Byte flag = 0)
+        public static Boolean Invoke(IApiHost host, Object session, String action, Object args, Byte flag = 0)
         {
             if (session == null) return false;
 
-            host.StatSend?.Increment();
+            // 性能计数器，次数、TPS、平均耗时
+            //host.StatSend?.Increment();
+            var st = host.StatInvoke;
 
             // 编码请求
             var pk = EncodeArgs(host.Encoder, action, args);
@@ -116,7 +157,20 @@ namespace NewLife.Remoting
             };
             if (flag > 0) msg.Flag = flag;
 
-            return session.Send(msg);
+            var sw = st.StartCount();
+            try
+            {
+                if (session is IApiSession ss)
+                    return ss.Send(msg);
+                else if (session is ISocketRemote client)
+                    return client.SendMessage(msg);
+                else
+                    throw new InvalidOperationException();
+            }
+            finally
+            {
+                st.StopCount(sw);
+            }
         }
 
         /// <summary>创建控制器实例</summary>
@@ -153,17 +207,16 @@ namespace NewLife.Remoting
 
             // 参数或结果
             var pk2 = value as Packet;
-            if (pk2 != null)
+            if (pk2 != null && pk2.Data != null)
             {
                 var len = pk2.Total;
 
                 // 不管有没有附加数据，都会写入长度
-                //ms.WriteEncodedInt(len);
                 writer.Write(len);
             }
 
             var pk = new Packet(ms.GetBuffer(), 8, (Int32)ms.Length - 8);
-            if (pk2 != null) pk.Next = pk2;
+            if (pk2 != null && pk2.Data != null) pk.Next = pk2;
 
             return pk;
         }
@@ -171,8 +224,13 @@ namespace NewLife.Remoting
         private static Packet EncodeArgs(IEncoder enc, String action, Object args)
         {
             // 二进制优先
-            var pk = args as Packet;
-            if (pk == null) pk = enc.Encode(action, 0, args);
+            if (args is Packet pk)
+            {
+            }
+            else if (args is Byte[] buf)
+                pk = new Packet(buf);
+            else
+                pk = enc.Encode(action, 0, args);
             pk = Encode(action, 0, pk);
 
             return pk;
@@ -197,14 +255,13 @@ namespace NewLife.Remoting
 
             action = reader.ReadString();
             if (msg.Reply && msg is DefaultMessage dm && dm.Error) code = reader.ReadInt32();
-            if (action.IsNullOrEmpty()) return false;
+            if (action.IsNullOrEmpty()) throw new Exception("解码错误，无法找到服务名！");
 
             // 参数或结果
             if (ms.Length > ms.Position)
             {
-                //var len = ms.ReadEncodedInt();
                 var len = reader.ReadInt32();
-                if (len > 0) value = msg.Payload.Sub((Int32)ms.Position, len);
+                if (len > 0) value = msg.Payload.Slice((Int32)ms.Position, len);
             }
 
             return true;
@@ -219,11 +276,23 @@ namespace NewLife.Remoting
         {
             if (host == null) return null;
 
-            var sb = new StringBuilder();
-            if (host.StatSend.Value > 0) sb.AppendFormat("请求：{0} ", host.StatSend);
-            if (host.StatReceive.Value > 0) sb.AppendFormat("处理：{0} ", host.StatReceive);
+            var sb = Pool.StringBuilder.Get();
+            var pf1 = host.StatInvoke;
+            var pf2 = host.StatProcess;
+            if (pf1 != null && pf1.Value > 0) sb.AppendFormat("请求：{0} ", pf1);
+            if (pf2 != null && pf2.Value > 0) sb.AppendFormat("处理：{0} ", pf2);
 
-            return sb.ToString();
+            if (host is ApiServer svr && svr.Server is NetServer ns)
+                sb.Append(ns.GetStat());
+            else if (host is ApiClient ac)
+            {
+                var st1 = ac.StatSend;
+                var st2 = ac.StatReceive;
+                if (st1 != null && st1.Value > 0) sb.AppendFormat("发送：{0} ", st1);
+                if (st2 != null && st2.Value > 0) sb.AppendFormat("接收：{0} ", st2);
+            }
+
+            return sb.Put(true);
         }
         #endregion
     }

@@ -80,7 +80,9 @@
     <Compile Include="Collections\CollectionHelper.cs" />
     <Compile Include="Collections\ConcurrentHashSet.cs" />
     <Compile Include="Collections\DictionaryCache.cs" />
+    <Compile Include="Collections\IPool.cs" />
     <Compile Include="Collections\NullableDictionary.cs" />
+    <Compile Include="Collections\ObjectPool.cs" />
     <Compile Include="Collections\Pool.cs" />
     <Compile Include="Common\CombGuid.cs" />
     <Compile Include="Common\PinYin.cs" />
@@ -94,6 +96,8 @@
     <Compile Include="Compression\ZipFile.cs" />
     <Compile Include="Configuration\CombConfig.cs" />
     <Compile Include="Data\BinaryTree.cs" />
+    <Compile Include="Data\DbRow.cs" />
+    <Compile Include="Data\DbTable.cs" />
     <Compile Include="Data\GeoAddress.cs" />
     <Compile Include="Data\GeoArea.cs" />
     <Compile Include="Data\GeoPoint.cs" />
@@ -110,6 +114,8 @@
     <Compile Include="Http\HttpRequest.cs" />
     <Compile Include="Http\HttpResponse.cs" />
     <Compile Include="Http\HttpServer.cs" />
+    <Compile Include="Http\TinyHttpClient.cs" />
+    <Compile Include="IO\CsvFile.cs" />
     <Compile Include="IO\EncodingHelper.cs" />
     <Compile Include="IO\PathHelper.cs" />
     <Compile Include="Json\JsonConfig.cs" />
@@ -118,6 +124,7 @@
     <Compile Include="Log\ActionLog.cs" />
     <Compile Include="Log\CompositeLog.cs" />
     <Compile Include="Log\ConsoleLog.cs" />
+    <Compile Include="Log\ICounter.cs" />
     <Compile Include="Log\ILog.cs" />
     <Compile Include="Log\Logger.cs" />
     <Compile Include="Log\LogLevel.cs" />
@@ -133,31 +140,27 @@
     <Compile Include="Messaging\IMessage.cs">
       <SubType>Code</SubType>
     </Compile>
-    <Compile Include="Messaging\MessageBase.cs">
-      <SubType>Code</SubType>
-    </Compile>
     <Compile Include="Messaging\MessageEventArgs.cs" />
     <Compile Include="Model\IAuthUser.cs" />
     <Compile Include="Model\IFactory.cs" />
-    <Compile Include="Model\IHistory.cs" />
-    <Compile Include="Model\IOnline.cs" />
+    <Compile Include="Model\IHandler.cs" />
+    <Compile Include="Model\IHandlerContext.cs" />
+    <Compile Include="Model\IPipeline.cs" />
     <Compile Include="Model\IPlugin.cs" />
     <Compile Include="Model\IManageUser.cs" />
     <Compile Include="Model\ModelExtension.cs" />
     <Compile Include="Model\ObjectContainerHelper.cs" />
     <Compile Include="Http\HttpHelper.cs" />
-    <Compile Include="Net\Handlers\IHandler.cs" />
-    <Compile Include="Net\Handlers\IHandlerContext.cs" />
     <Compile Include="Net\Handlers\IMatchQueue.cs" />
     <Compile Include="Net\Handlers\LengthFieldCodec.cs" />
     <Compile Include="Net\Handlers\MessageCodec.cs" />
     <Compile Include="Net\Handlers\StandardCodec.cs" />
     <Compile Include="Net\INetSession.cs" />
-    <Compile Include="Net\IPipeline.cs" />
     <Compile Include="Net\ISocket.cs" />
     <Compile Include="Net\ISocketServer.cs" />
     <Compile Include="Net\ISocketClient.cs" />
     <Compile Include="Net\NetException.cs" />
+    <Compile Include="Net\NetHandlerContext.cs" />
     <Compile Include="Net\NetHelper.cs" />
     <Compile Include="Net\NetServer.cs" />
     <Compile Include="Net\NetSession.cs" />
@@ -221,6 +224,7 @@
     <Compile Include="Security\RC4.cs" />
     <Compile Include="Security\RSAHelper.cs" />
     <Compile Include="Security\SecurityHelper.cs" />
+    <Compile Include="Serialization\Accessor.cs" />
     <Compile Include="Serialization\BinaryCodec.cs" />
     <Compile Include="Serialization\BinaryCodec2.cs" />
     <Compile Include="Serialization\Binary\BinaryDictionary.cs" />
@@ -229,7 +233,6 @@
     <Compile Include="Serialization\Binary\Binary.cs" />
     <Compile Include="Serialization\Binary\BinaryComposite.cs" />
     <Compile Include="Serialization\Binary\BinaryPair.cs" />
-    <Compile Include="Serialization\Binary\BitSizeAttribute.cs" />
     <Compile Include="Serialization\Binary\FieldSizeAttribute.cs" />
     <Compile Include="Serialization\Binary\BinaryGeneral.cs" />
     <Compile Include="Serialization\Binary\IBinary.cs" />
@@ -259,9 +262,7 @@
     <Compile Include="Serialization\Json\JsonReader.cs" />
     <Compile Include="Serialization\Json\JsonTest.cs" />
     <Compile Include="Serialization\Json\JsonWriter.cs" />
-    <Compile Include="Serialization\Protocol.cs">
-      <SubType>Code</SubType>
-    </Compile>
+    <Compile Include="Serialization\SerialHelper.cs" />
     <Compile Include="Serialization\Xml\XmlList.cs" />
     <Compile Include="Serialization\Xml\XmlComposite.cs" />
     <Compile Include="Serialization\Xml\XmlGeneral.cs" />
@@ -343,6 +344,9 @@
       <DependentUpon>SerialPortList.cs</DependentUpon>
     </EmbeddedResource>
     <Compile Include="Extension\EndPointExtensions.cs" />
+    <None Include="Caching\Readme.MD" />
+    <None Include="Log\Readme.md" />
+    <None Include="Net\Readme.md" />
     <None Include="Remoting\ApiServer.cd" />
     <None Include="Remoting\ApiClient.cd" />
     <None Include="X组件.txt" />

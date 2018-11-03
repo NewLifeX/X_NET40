@@ -4,7 +4,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Text;
 using NewLife;
-using NewLife.Data;
+using NewLife.Collections;
 using NewLife.Reflection;
 
 namespace System
@@ -302,40 +302,28 @@ namespace System
         //    return new Packet(ms.GetBuffer(), (Int32)ms.Position, len);
         //}
 
-        private static DateTime _dt1970 = new DateTime(1970, 1, 1);
-        /// <summary>写入Unix格式时间，1970年以来秒数</summary>
+        /// <summary>写入Unix格式时间，1970年以来秒数，绝对时间，非UTC</summary>
         /// <param name="stream"></param>
         /// <param name="dt"></param>
-        /// <param name="baseYear"></param>
         /// <returns></returns>
-        public static Stream WriteDateTime(this Stream stream, DateTime dt, Int32 baseYear = 1970)
+        public static Stream WriteDateTime(this Stream stream, DateTime dt)
         {
-            var seconds = 0;
-            if (dt.Year >= baseYear)
-            {
-                var bdt = baseYear == 1970 ? _dt1970 : new DateTime(baseYear, 1, 1);
-                seconds = (Int32)(dt - bdt).TotalSeconds;
-            }
-
+            var seconds = dt.ToInt();
             stream.Write(seconds.GetBytes());
 
             return stream;
         }
 
-        /// <summary>读取Unix格式时间，1970年以来秒数</summary>
+        /// <summary>读取Unix格式时间，1970年以来秒数，绝对时间，非UTC</summary>
         /// <param name="stream"></param>
-        /// <param name="baseYear"></param>
         /// <returns></returns>
-        public static DateTime ReadDateTime(this Stream stream, Int32 baseYear = 1970)
+        public static DateTime ReadDateTime(this Stream stream)
         {
-            var bdt = baseYear == 1970 ? _dt1970 : new DateTime(baseYear, 1, 1);
-
             var buf = new Byte[4];
             stream.Read(buf, 0, 4);
             var seconds = (Int32)buf.ToUInt32();
-            if (seconds <= 0) return bdt;
 
-            return bdt.AddSeconds(seconds);
+            return seconds.ToDateTime();
         }
 
         /// <summary>复制数组</summary>
@@ -361,8 +349,8 @@ namespace System
         /// <param name="src">源数组</param>
         /// <param name="srcOffset">源数组偏移</param>
         /// <param name="count">数量</param>
-        /// <returns></returns>
-        public static Byte[] Write(this Byte[] dst, Int32 dstOffset, Byte[] src, Int32 srcOffset = 0, Int32 count = -1)
+        /// <returns>返回实际写入的字节个数</returns>
+        public static Int32 Write(this Byte[] dst, Int32 dstOffset, Byte[] src, Int32 srcOffset = 0, Int32 count = -1)
         {
             if (count <= 0) count = src.Length - srcOffset;
             if (dstOffset + count > dst.Length) count = dst.Length - dstOffset;
@@ -372,7 +360,7 @@ namespace System
 #else
             Buffer.BlockCopy(src, srcOffset, dst, dstOffset, count);
 #endif
-            return dst;
+            return count;
         }
 
         /// <summary>合并两个数组</summary>
@@ -421,7 +409,7 @@ namespace System
             // 如果要读完数据，又不支持定位，则采用内存流搬运
             if (!stream.CanSeek)
             {
-                var ms = new MemoryStream();
+                var ms = Pool.MemoryStream.Get();
                 while (true)
                 {
                     var buf = new Byte[1024];
@@ -432,7 +420,7 @@ namespace System
                     if (count < buf.Length) break;
                 }
 
-                return ms.ToArray();
+                return ms.Put(true);
             }
             else
             {
@@ -544,8 +532,8 @@ namespace System
 
             // 可能数据流前面有编码字节序列，需要先去掉
             var idx = 0;
-            var preamble = encoding.GetPreamble();
-            if (preamble != null && preamble.Length > 0 && buf.Length >= preamble.Length)
+            var preamble = encoding?.GetPreamble();
+            if (preamble != null && preamble.Length > 0 && buf.Length >= offset + preamble.Length)
             {
                 if (buf.ReadBytes(offset, preamble.Length).StartsWith(preamble)) idx = preamble.Length;
             }
@@ -1186,7 +1174,7 @@ namespace System
                 // 扣除间隔
                 if (!String.IsNullOrEmpty(separate)) len -= g * separate.Length;
             }
-            var sb = new StringBuilder(len);
+            var sb = Pool.StringBuilder.Get();
             for (var i = 0; i < count; i++)
             {
                 if (sb.Length > 0)
@@ -1202,7 +1190,7 @@ namespace System
                 sb.Append(GetHexValue(b % 0x10));
             }
 
-            return sb.ToString();
+            return sb.Put(true);
         }
 
         private static Char GetHexValue(Int32 i)

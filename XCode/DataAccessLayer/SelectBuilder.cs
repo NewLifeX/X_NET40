@@ -4,6 +4,8 @@ using System.Data;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
+using NewLife.Caching;
+using NewLife.Collections;
 
 namespace XCode.DataAccessLayer
 {
@@ -174,7 +176,7 @@ namespace XCode.DataAccessLayer
 
         #region 扩展属性
         /// <summary>选择列，为空时为*</summary>
-        public String ColumnOrDefault { get { return String.IsNullOrEmpty(Column) ? "*" : Column; } }
+        public String ColumnOrDefault => Column.IsNullOrEmpty() ? "*" : Column;
 
         /// <summary>选择列，去除聚合，为空时为*</summary>
         public String ColumnNoAggregate
@@ -185,7 +187,7 @@ namespace XCode.DataAccessLayer
 
                 // 分解重构，把聚合函数干掉
                 var ss = Column.Split(",");
-                var sb = new StringBuilder();
+                var sb = Pool.StringBuilder.Get();
                 foreach (var item in ss)
                 {
                     if (sb.Length > 0) sb.Append(", ");
@@ -207,7 +209,7 @@ namespace XCode.DataAccessLayer
                         sb.Append(item);
                 }
 
-                return sb.ToString();
+                return sb.Put(true);
             }
         }
 
@@ -253,6 +255,30 @@ $";
 
             return false;
         }
+
+        /// <summary>缓存存储</summary>
+        public static ICache Store { get; set; } = NewLife.Caching.Cache.Default;
+
+        /// <summary>根据SQL创建，带缓存</summary>
+        /// <remarks>
+        /// 对于非常复杂的查询语句，正则平衡的处理器消耗很大
+        /// </remarks>
+        /// <param name="sql"></param>
+        /// <returns></returns>
+        public static SelectBuilder Create(String sql)
+        {
+            var key = $"SelectBuilder#{sql}";
+
+            var sb = Store.Get<SelectBuilder>(key);
+            if (sb != null) return sb;
+
+            sb = new SelectBuilder();
+            sb.Parse(sql);
+
+            Store.Set(key, sb, 10 * 60);
+
+            return sb;
+        }
         #endregion
 
         #region 导出SQL
@@ -260,7 +286,7 @@ $";
         /// <returns></returns>
         public override String ToString()
         {
-            var sb = new StringBuilder();
+            var sb = Pool.StringBuilder.Get();
             sb.Append("Select ");
             sb.Append(ColumnOrDefault);
             sb.Append(" From ");
@@ -271,7 +297,7 @@ $";
             if (!OrderBy.IsNullOrEmpty()) sb.Append(" Order By " + OrderBy);
             if (!Limit.IsNullOrEmpty()) sb.Append(Limit.EnsureStart(" "));
 
-            return sb.ToString();
+            return sb.Put(true);
         }
 
         /// <summary>获取记录数的语句</summary>
@@ -445,7 +471,7 @@ $";
 
             if (keys.Length == 1) return isdescs != null && isdescs.Length > 0 && isdescs[0] ? keys[0] + " Desc" : keys[0];
 
-            var sb = new StringBuilder();
+            var sb = Pool.StringBuilder.Get();
             for (var i = 0; i < keys.Length; i++)
             {
                 if (sb.Length > 0) sb.Append(", ");
@@ -453,7 +479,7 @@ $";
                 sb.Append(keys[i]);
                 if (isdescs != null && isdescs.Length > i && isdescs[i]) sb.Append(" Desc");
             }
-            return sb.ToString();
+            return sb.Put(true);
         }
 
         internal SelectBuilder Top(Int64 top, String keyColumn = null)

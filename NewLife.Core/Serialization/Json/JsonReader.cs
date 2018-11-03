@@ -8,12 +8,11 @@ using NewLife.Reflection;
 namespace NewLife.Serialization
 {
     /// <summary>Json读取器</summary>
-    internal class JsonReader
+    public class JsonReader
     {
         #region 属性
         /// <summary>是否使用UTC时间</summary>
         public Boolean UseUTCDateTime { get; set; }
-
         #endregion
 
         #region 构造
@@ -51,6 +50,8 @@ namespace NewLife.Serialization
         public Object ToObject(Object jobj, Type type, Object target)
         {
             if (type == null && target != null) type = target.GetType();
+
+            if (type.IsAssignableFrom(jobj.GetType())) return jobj;
 
             // Json对象是字典，目标类型可以是字典或复杂对象
             if (jobj is IDictionary<String, Object> vdic)
@@ -182,7 +183,7 @@ namespace NewLife.Serialization
             }
 
             // 遍历所有可用于序列化的属性
-            var props = type.GetProperties(true).ToDictionary(e => e.Name, e => e);
+            var props = type.GetProperties(true).ToDictionary(e => SerialHelper.GetName(e), e => e);
             foreach (var item in dic)
             {
                 var v = item.Value;
@@ -307,15 +308,22 @@ namespace NewLife.Serialization
         private DateTime CreateDateTime(Object value)
         {
             if (value is DateTime) return (DateTime)value;
-
             if (value is Int64 || value is Int32)
             {
-                var num = Convert.ToInt64(value);
-                var dt = new DateTime(1970, 1, 1);
-                if (num > 100 * 365 * 24 * 3600L)
-                    return dt.AddMilliseconds(num);
-                else
-                    return dt.AddSeconds(num);
+                var dt = value.ToDateTime();
+                if (UseUTCDateTime) dt = dt.ToUniversalTime();
+                return dt;
+            }
+
+            //用于解决奇葩json中时间字段使用了utc时间戳，还是用双引号包裹起来的情况。
+            if (value is String)
+            {
+                if (long.TryParse(value + "", out var result) && result > 0)
+                {
+                    var sdt = result.ToDateTime();
+                    if (UseUTCDateTime) sdt = sdt.ToUniversalTime();
+                    return sdt;
+                }
             }
 
             var str = (String)value;

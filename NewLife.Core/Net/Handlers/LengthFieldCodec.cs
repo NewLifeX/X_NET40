@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using NewLife.Data;
+using NewLife.Model;
 
 namespace NewLife.Net.Handlers
 {
@@ -79,15 +80,21 @@ namespace NewLife.Net.Handlers
         /// <returns></returns>
         protected override IList<Packet> Decode(IHandlerContext context, Packet pk)
         {
-            var ss = context.Session;
+            var ss = context.Owner as IExtend;
             var mcp = ss["CodecItem"] as CodecItem;
             if (mcp == null) ss["CodecItem"] = mcp = new CodecItem();
 
-            return Parse(pk, mcp, ms => GetLength(ms, Offset, Size), Expire);
-        }
+            var pks = Parse(pk, mcp, ms => GetLength(ms, Offset, Size), Expire);
 
-        ///// <summary>内部缓存</summary>
-        //private MemoryStream _ms;
-        //private DateTime _last;
+            // 跳过头部长度
+            var len = Offset + Math.Abs(Size);
+            foreach (var item in pks)
+            {
+                item.Set(item.Data, item.Offset + len, item.Count - len);
+                //item.SetSub(len, item.Count - len);
+            }
+
+            return pks;
+        }
     }
 }

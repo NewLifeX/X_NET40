@@ -48,6 +48,9 @@ namespace XCode.DataAccessLayer
         /// <summary>拥有者</summary>
         String Owner { get; set; }
 
+        /// <summary>数据库名</summary>
+        String DatabaseName { get; }
+
         /// <summary>数据库服务器版本</summary>
         String ServerVersion { get; }
 
@@ -55,7 +58,7 @@ namespace XCode.DataAccessLayer
         Boolean ShowSQL { get; set; }
 
         /// <summary>参数化添删改查。默认关闭</summary>
-        Boolean UserParameter { get; set; }
+        Boolean UseParameter { get; set; }
 
         /// <summary>反向工程。Off 关闭；ReadOnly 只读不执行；On 打开，新建；Full 完全，修改删除</summary>
         Migration Migration { get; set; }
@@ -123,11 +126,11 @@ namespace XCode.DataAccessLayer
         /// <returns></returns>
         String FormatValue(IDataColumn field, Object value);
 
-        /// <summary>格式化标识列，返回插入数据时所用的表达式，如果字段本身支持自增，则返回空</summary>
-        /// <param name="field">字段</param>
-        /// <param name="value">数值</param>
-        /// <returns></returns>
-        String FormatIdentity(IDataColumn field, Object value);
+        ///// <summary>格式化标识列，返回插入数据时所用的表达式，如果字段本身支持自增，则返回空</summary>
+        ///// <param name="field">字段</param>
+        ///// <param name="value">数值</param>
+        ///// <returns></returns>
+        //String FormatIdentity(IDataColumn field, Object value);
 
         /// <summary>格式化参数名</summary>
         /// <param name="name">名称</param>
@@ -143,9 +146,9 @@ namespace XCode.DataAccessLayer
         /// <summary>创建参数</summary>
         /// <param name="name">名称</param>
         /// <param name="value">值</param>
-        /// <param name="type">类型</param>
+        /// <param name="field">字段</param>
         /// <returns></returns>
-        IDataParameter CreateParameter(String name, Object value, Type type = null);
+        IDataParameter CreateParameter(String name, Object value, IDataColumn field = null);
 
         /// <summary>创建参数数组</summary>
         /// <param name="ps"></param>
@@ -157,6 +160,9 @@ namespace XCode.DataAccessLayer
 
         /// <summary>本连接数据只读。需求不够强劲，暂不支持在连接字符串中设置</summary>
         Boolean Readonly { get; set; }
+
+        /// <summary>数据层缓存有效期。单位秒</summary>
+        Int32 DataCache { get; set; }
 
         /// <summary>表前缀。所有在该连接上的表名都自动增加该前缀</summary>
         String TablePrefix { get; set; }

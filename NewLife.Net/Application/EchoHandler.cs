@@ -14,7 +14,8 @@ namespace NewLife.Net.Application
         /// <returns></returns>
         public override Object Read(IHandlerContext context, Object message)
         {
-            var session = context.Owner as ISocketRemote;
+            var ctx = context as NetHandlerContext;
+            var session = ctx.Session;
 
             if (message is Packet pk)
             {

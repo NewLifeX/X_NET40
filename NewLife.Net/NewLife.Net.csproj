@@ -11,22 +11,20 @@
     <RootNamespace>NewLife.Net</RootNamespace>
     <AssemblyName>NewLife.Net</AssemblyName>
     <FileAlignment>512</FileAlignment>
-    <TargetFrameworkProfile />
+    <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
-    <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
     <DebugSymbols>true</DebugSymbols>
     <OutputPath>..\..\Bin\</OutputPath>
-    <DefineConstants>TRACE;DEBUG</DefineConstants>
+    <DefineConstants>TRACE;DEBUG;NET4</DefineConstants>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <DocumentationFile>..\..\Bin\NewLife.Net.XML</DocumentationFile>
     <DebugType>full</DebugType>
     <PlatformTarget>AnyCPU</PlatformTarget>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
-    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
     <OutputPath>..\..\Bin\</OutputPath>
-    <DefineConstants>TRACE</DefineConstants>
+    <DefineConstants>TRACE;NET4</DefineConstants>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <DocumentationFile>..\..\Bin\NewLife.Net.XML</DocumentationFile>
     <Optimize>true</Optimize>
@@ -53,13 +51,6 @@
     <Compile Include="Application\LogServer.cs" />
     <Compile Include="Application\EchoServer.cs" />
     <Compile Include="Application\SerialServer.cs" />
-    <Compile Include="CoAP\CoAPMessage.cs" />
-    <Compile Include="Dhcp\DhcpClient.cs" />
-    <Compile Include="Dhcp\DhcpMessageType.cs" />
-    <Compile Include="Dhcp\DhcpEntity.cs" />
-    <Compile Include="Dhcp\DhcpOption.cs" />
-    <Compile Include="Dhcp\DhcpServer.cs" />
-    <Compile Include="Dhcp\DhcpSession.cs" />
     <Compile Include="DNS\BinaryDNS.cs" />
     <Compile Include="DNS\DNSClient.cs" />
     <Compile Include="DNS\DNSEntity.cs" />
@@ -87,8 +78,6 @@
     <Compile Include="FTP\FTPSession.cs" />
     <Compile Include="FTP\FTPTransferMode.cs" />
     <Compile Include="Http\HttpCache.cs" />
-    <Compile Include="ISO\COTP.cs" />
-    <Compile Include="ISO\TPKT.cs" />
     <Compile Include="Modbus\DataStore.cs" />
     <Compile Include="Modbus\Errors.cs" />
     <Compile Include="Modbus\IDataStore.cs" />

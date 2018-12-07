@@ -34,7 +34,7 @@ namespace Test
                 try
                 {
 #endif
-                Test6();
+                Test1();
 #if !DEBUG
                 }
                 catch (Exception ex)
@@ -209,72 +209,6 @@ namespace Test
             //    Console.Title = $"GC={pc.RawValue:n0}";
             //    Thread.Sleep(1000);
             //}
-        }
-
-        static void Test6()
-        {
-            var pf = new PerfCounter();
-
-            Task.Factory.StartNew(() =>
-            {
-                for (var i = 0; i < 10000; i++)
-                {
-                    var n = Rand.Next(1500);
-                    pf.Increment(n);
-
-                    Thread.Sleep(Rand.Next(10, 300));
-                }
-            });
-
-            for (var i = 0; i < 1000; i++)
-            {
-                Console.WriteLine(pf + "");
-                Thread.Sleep(1000);
-            }
-        }
-
-        static async void Test5()
-        {
-            Console.WriteLine("服务端1，客户端2：");
-            if (Console.ReadKey().KeyChar == '1')
-            {
-                var svr = new NetServer(777);
-#if DEBUG
-                svr.Log = XTrace.Log; svr.LogSend = true; svr.LogReceive = true;
-#endif
-                //svr.Add<DefaultCodec>();
-                svr.Add(new LengthFieldCodec { Size = 4 });
-                //svr.Add<BinaryCodec<UserY>>();
-                svr.Add<JsonCodec<UserY>>();
-                svr.Add<EchoHandler>();
-                svr.Start();
-            }
-            else
-            {
-                var client = new NetUri("tcp://127.0.0.1:777").CreateRemote();
-#if DEBUG
-                client.Log = XTrace.Log; client.LogSend = true; client.LogReceive = true;
-#endif
-                //client.Add<DefaultCodec>();
-                client.Add(new LengthFieldCodec { Size = 4 });
-                //client.Add<BinaryCodec<UserY>>();
-                client.Add<JsonCodec<UserY>>();
-                client.Open();
-
-                //client.Send("Stone");
-                var user = new UserY { ID = 0x1234, Name = "Stone", DisplayName = "大石头" };
-                for (var i = 0; i < 3; i++)
-                {
-                    var rs = await client.SendAsync(user) as UserY;
-                    XTrace.WriteLine("{0} {1}", rs.Name, rs.DisplayName);
-                }
-            }
-        }
-        class UserY
-        {
-            public Int32 ID { get; set; }
-            public String Name { get; set; }
-            public String DisplayName { get; set; }
         }
     }
 }

@@ -71,78 +71,173 @@ WriteLiteral("\r\n");
             #line hidden
 WriteLiteral("    <div");
 
-WriteLiteral(" class=\"toolbar clearfix text-center\"");
+WriteLiteral(" class=\"text-center\"");
 
-WriteLiteral(">\r\n        <div");
+WriteLiteral(">\r\n        ");
+
+WriteLiteral("\r\n        <div");
+
+WriteLiteral(" class=\"col-sm-12\"");
+
+WriteLiteral(">\r\n            <p");
+
+WriteLiteral(" style=\"font-size: 22px; position: relative; display: inline-block;width: 100%\"");
+
+WriteLiteral(">\r\n                <span");
+
+WriteLiteral(" style=\"height: 1px; position: absolute; background-color: #928f8f; width: 28%; t" +
+"op: 50%; left:65%;\"");
+
+WriteLiteral("></span>\r\n                第三方登录\r\n                <span");
+
+WriteLiteral(" style=\"height: 1px; position: absolute; background-color: #928f8f; width: 28%; t" +
+"op: 50%; right:65%;\"");
+
+WriteLiteral("></span>\r\n            </p>\r\n        </div>\r\n        <div");
 
 WriteLiteral(" class=\"row\"");
 
-WriteLiteral(" style=\"padding-top:30px;\"");
+WriteLiteral(" style=\"padding: 0 0 0 0;\"");
 
-WriteLiteral(">\r\n            <span>\r\n                第三方登录：\r\n            </span>\r\n");
+WriteLiteral(">\r\n            <div");
 
-            
-            #line 15 "..\..\Areas\Admin\Views\User\_Login_Login3.cshtml"
-            
-            
-            #line default
-            #line hidden
-            
-            #line 15 "..\..\Areas\Admin\Views\User\_Login_Login3.cshtml"
-             foreach (var mi in ms)
-            {
-                var nickName = "";
-                if (!dic.TryGetValue(mi.Name, out nickName)) { nickName = mi.Name; }
+WriteLiteral(" class=\"form-group col-sm-12\"");
 
-                var url = "Sso/Login?name=" + mi.Name;
-                if (!returnUrl.IsNullOrEmpty()) { url += "&r=" + HttpUtility.UrlEncode(returnUrl); }
+WriteLiteral(">\r\n");
 
-                url = HttpRuntime.AppDomainAppVirtualPath + url;
-
-
-            
-            #line default
-            #line hidden
-WriteLiteral("                <a");
-
-WriteAttribute("href", Tuple.Create(" href=\"", 945), Tuple.Create("\"", 956)
             
             #line 25 "..\..\Areas\Admin\Views\User\_Login_Login3.cshtml"
-, Tuple.Create(Tuple.Create("", 952), Tuple.Create<System.Object, System.Int32>(url
+                
             
             #line default
             #line hidden
-, 952), false)
+            
+            #line 25 "..\..\Areas\Admin\Views\User\_Login_Login3.cshtml"
+                 foreach (var mi in ms)
+                {
+                    var nickName = "";
+                    if (!dic.TryGetValue(mi.Name, out nickName))
+                    {
+                        nickName = mi.Name;
+                    }
+
+                    var url = "Sso/Login?name=" + mi.Name;
+                    if (!returnUrl.IsNullOrEmpty())
+                    {
+                        url += "&r=" + HttpUtility.UrlEncode(returnUrl);
+                    }
+
+                    url = HttpRuntime.AppDomainAppVirtualPath + url;
+                    var logo = ViewHelper.GetLogo(mi.Name);
+
+
+            
+            #line default
+            #line hidden
+WriteLiteral("                    <a");
+
+WriteAttribute("href", Tuple.Create(" href=\"", 1757), Tuple.Create("\"", 1768)
+            
+            #line 42 "..\..\Areas\Admin\Views\User\_Login_Login3.cshtml"
+, Tuple.Create(Tuple.Create("", 1764), Tuple.Create<System.Object, System.Int32>(url
+            
+            #line default
+            #line hidden
+, 1764), false)
 );
 
-WriteLiteral(">\r\n                    <i");
+WriteLiteral(">\r\n");
+
+            
+            #line 43 "..\..\Areas\Admin\Views\User\_Login_Login3.cshtml"
+                        
+            
+            #line default
+            #line hidden
+            
+            #line 43 "..\..\Areas\Admin\Views\User\_Login_Login3.cshtml"
+                         if (!logo.IsNullOrEmpty())
+                        {
+
+            
+            #line default
+            #line hidden
+WriteLiteral("                            ");
+
+WriteLiteral("<img");
+
+WriteAttribute("src", Tuple.Create(" src=\"", 1890), Tuple.Create("\"", 1901)
+            
+            #line 45 "..\..\Areas\Admin\Views\User\_Login_Login3.cshtml"
+, Tuple.Create(Tuple.Create("", 1896), Tuple.Create<System.Object, System.Int32>(logo
+            
+            #line default
+            #line hidden
+, 1896), false)
+);
+
+WriteAttribute("title", Tuple.Create(" title=\"", 1902), Tuple.Create("\"", 1919)
+            
+            #line 45 "..\..\Areas\Admin\Views\User\_Login_Login3.cshtml"
+, Tuple.Create(Tuple.Create("", 1910), Tuple.Create<System.Object, System.Int32>(nickName
+            
+            #line default
+            #line hidden
+, 1910), false)
+);
+
+WriteLiteral(" style=\"width: 64px; height: 64px;\"");
+
+WriteLiteral(" />");
+
+WriteLiteral("\r\n");
+
+            
+            #line 46 "..\..\Areas\Admin\Views\User\_Login_Login3.cshtml"
+                        }
+                        else
+                        {
+
+            
+            #line default
+            #line hidden
+WriteLiteral("                            <i");
 
 WriteLiteral(" class=\"glyphicon glyphicon-menu-right\"");
 
 WriteLiteral("></i>\r\n");
 
-WriteLiteral("                    ");
+WriteLiteral("                            ");
 
             
-            #line 27 "..\..\Areas\Admin\Views\User\_Login_Login3.cshtml"
-               Write(nickName);
-
-            
-            #line default
-            #line hidden
-WriteLiteral("\r\n                </a>\r\n");
-
-            
-            #line 29 "..\..\Areas\Admin\Views\User\_Login_Login3.cshtml"
-            }
+            #line 50 "..\..\Areas\Admin\Views\User\_Login_Login3.cshtml"
+                             Write(nickName);
 
             
             #line default
             #line hidden
-WriteLiteral("        </div>\r\n    </div>\r\n");
+WriteLiteral("\r\n");
 
             
-            #line 32 "..\..\Areas\Admin\Views\User\_Login_Login3.cshtml"
+            #line 51 "..\..\Areas\Admin\Views\User\_Login_Login3.cshtml"
+                        }
+
+            
+            #line default
+            #line hidden
+WriteLiteral("                    </a>\r\n");
+
+            
+            #line 53 "..\..\Areas\Admin\Views\User\_Login_Login3.cshtml"
+                }
+
+            
+            #line default
+            #line hidden
+WriteLiteral("            </div>\r\n        </div>\r\n    </div>\r\n");
+
+            
+            #line 57 "..\..\Areas\Admin\Views\User\_Login_Login3.cshtml"
 }
             
             #line default

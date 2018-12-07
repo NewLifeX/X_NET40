@@ -1,17 +1,18 @@
 ﻿using System;
-using System.Linq;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.IO;
+using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Web;
 using System.Web.Mvc;
 using NewLife.Common;
+using NewLife.Log;
 using NewLife.Reflection;
-using XCode.Membership;
 using XCode;
-using System.Web.Hosting;
-using System.IO;
+using XCode.Membership;
 
 namespace NewLife.Cube.Admin.Controllers
 {
@@ -20,17 +21,13 @@ namespace NewLife.Cube.Admin.Controllers
     public class IndexController : ControllerBaseX
     {
         /// <summary>菜单顺序。扫描是会反射读取</summary>
-        protected static Int32 MenuOrder { get; set; }
-
-        static IndexController()
-        {
-            MenuOrder = 10;
-        }
+        protected static Int32 MenuOrder { get; set; } = 10;
 
         /// <summary>首页</summary>
         /// <returns></returns>
         //[EntityAuthorize(PermissionFlags.Detail)]
         [AllowAnonymous]
+        [RequireSsl]
         public ActionResult Index()
         {
             var user = ManageProvider.Provider.TryLogin();
@@ -121,6 +118,32 @@ namespace NewLife.Cube.Admin.Controllers
 
             return RedirectToAction(nameof(Main));
         }
+
+        /// <summary>
+        /// 释放内存，参考之前的Runtime方法
+        /// </summary>
+        /// <returns></returns>
+        [DisplayName("释放内存")]
+        [EntityAuthorize((PermissionFlags)16)]
+        public ActionResult MemoryFree()
+        {
+            try
+            {
+                GC.Collect();
+
+                // 释放当前进程所占用的内存
+                var p = Process.GetCurrentProcess();
+                SetProcessWorkingSetSize(p.Handle, -1, -1);
+            }
+            catch (Exception ex)
+            {
+                XTrace.WriteException(ex);
+            }
+
+            return RedirectToAction(nameof(Main));
+        }
+        [DllImport("kernel32.dll")]
+        static extern Boolean SetProcessWorkingSetSize(IntPtr proc, Int32 min, Int32 max);
 
         /// <summary>菜单不可见</summary>
         /// <param name="menu"></param>

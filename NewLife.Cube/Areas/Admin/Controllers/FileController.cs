@@ -3,15 +3,23 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
 using System.Linq;
+using XCode.Membership;
+using Microsoft.AspNetCore.Mvc;
+#if __CORE__
+using Microsoft.AspNetCore.Http;
+using NewLife.Cube.Com;
+using NewLife.Cube.Extensions;
+#else
 using System.Web;
 using System.Web.Mvc;
-using XCode.Membership;
+#endif
 
 namespace NewLife.Cube.Admin.Controllers
 {
     /// <summary>文件管理</summary>
     [DisplayName("文件")]
     [EntityAuthorize(PermissionFlags.Detail)]
+    [Area("Admin")]
     public class FileController : ControllerBaseX
     {
         /// <summary>菜单顺序。扫描是会反射读取</summary>
@@ -23,7 +31,7 @@ namespace NewLife.Cube.Admin.Controllers
         }
 
         #region 基础
-        private String Root { get { return "../".GetFullPath(); } }
+        private String Root => "../".GetFullPath();
 
         private FileInfo GetFile(String r)
         {
@@ -90,10 +98,7 @@ namespace NewLife.Cube.Admin.Controllers
             return fi;
         }
 
-        private String GetFullName(String r)
-        {
-            return r.TrimStart(Root).TrimStart(Root.TrimEnd(Path.DirectorySeparatorChar + ""));
-        }
+        private String GetFullName(String r) => r.TrimStart(Root).TrimStart(Root.TrimEnd(Path.DirectorySeparatorChar + ""));
         #endregion
 
         #region 列表&删除
@@ -106,6 +111,7 @@ namespace NewLife.Cube.Admin.Controllers
 
             // 检查目录越界
             var root = Root.TrimEnd(Path.DirectorySeparatorChar);
+            if (di == null) di = Root.AsDirectory();
             if (!di.FullName.StartsWithIgnoreCase(root)) di = Root.AsDirectory();
 
             // 计算当前路径
@@ -142,12 +148,16 @@ namespace NewLife.Cube.Admin.Controllers
             // 在开头插入上一级目录
             if (!di.FullName.EqualIgnoreCase(Root, root))
             {
-                list.Insert(0, new FileItem
+                if (di.Parent != null)
                 {
-                    Name = "../",
-                    Directory = true,
-                    FullName = GetFullName(di.Parent.FullName)
-                });
+                    list.Insert(0, new FileItem
+                    {
+                        Name = "../",
+                        Directory = true,
+                        FullName = GetFullName(di.Parent.FullName)
+                    });
+                }
+
             }
 
             // 剪切板
@@ -236,6 +246,27 @@ namespace NewLife.Cube.Admin.Controllers
         #endregion
 
         #region 上传下载
+#if __CORE__
+        /// <summary>上传文件</summary>
+        /// <param name="r"></param>
+        /// <param name="file"></param>
+        /// <returns></returns>
+        [EntityAuthorize(PermissionFlags.Insert)]
+        public ActionResult Upload(String r, IFormFile file)
+        {
+            if (file != null)
+            {
+                var di = GetDirectory(r);
+                if (di == null) throw new Exception("找不到目录！");
+
+                var dest = di.FullName.CombinePath(file.FileName);
+                WriteLog("上传", dest);
+                System.IO.File.WriteAllBytes(dest, file.OpenReadStream().ReadBytes());
+            }
+
+            return RedirectToAction("Index", new { r });
+        }
+#else
         /// <summary>上传文件</summary>
         /// <param name="r"></param>
         /// <param name="file"></param>
@@ -255,6 +286,7 @@ namespace NewLife.Cube.Admin.Controllers
 
             return RedirectToAction("Index", new { r });
         }
+#endif
 
         /// <summary>下载文件</summary>
         /// <param name="r"></param>
@@ -275,8 +307,8 @@ namespace NewLife.Cube.Admin.Controllers
         private const String CLIPKEY = "File_Clipboard";
         private List<FileItem> GetClip()
         {
-            var list = Session[CLIPKEY] as List<FileItem>;
-            if (list == null) Session[CLIPKEY] = list = new List<FileItem>();
+            var list = GetSession<List<FileItem>>(CLIPKEY);
+            if (list == null) SetSession(CLIPKEY, list = new List<FileItem>());
 
             return list;
         }

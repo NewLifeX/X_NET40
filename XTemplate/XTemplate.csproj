@@ -15,16 +15,16 @@
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
-    <OutputPath>..\..\Bin\</OutputPath>
+    <OutputPath>..\..\Bin4\</OutputPath>
     <DefineConstants>TRACE;DEBUG;NET4</DefineConstants>
-    <DocumentationFile>..\..\Bin\XTemplate.XML</DocumentationFile>
+    <DocumentationFile>..\..\Bin4\XTemplate.XML</DocumentationFile>
     <DebugType>full</DebugType>
     <PlatformTarget>AnyCPU</PlatformTarget>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
-    <OutputPath>..\..\Bin\</OutputPath>
+    <OutputPath>..\..\Bin4\</OutputPath>
     <DefineConstants>TRACE;NET4</DefineConstants>
-    <DocumentationFile>..\..\Bin\XTemplate.XML</DocumentationFile>
+    <DocumentationFile>..\..\Bin4\XTemplate.XML</DocumentationFile>
     <Optimize>true</Optimize>
     <DebugType>pdbonly</DebugType>
     <PlatformTarget>AnyCPU</PlatformTarget>

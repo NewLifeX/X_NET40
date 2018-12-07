@@ -1,10 +1,25 @@
 ﻿using System;
 using System.ComponentModel;
-using System.Web;
 using NewLife.Xml;
 
 namespace NewLife.Cube
 {
+    /// <summary>SSL模式</summary>
+    public enum SslModes
+    {
+        /// <summary>关闭</summary>
+        [Description("关闭")]
+        Disable = 0,
+
+        /// <summary>仅首页</summary>
+        [Description("仅首页")]
+        HomeOnly = 10,
+
+        /// <summary>所有请求</summary>
+        [Description("所有请求")]
+        Full = 9999,
+    }
+
     /// <summary>魔方设置</summary>
     [DisplayName("魔方设置")]
     [XmlConfigFile(@"Config\Cube.config", 15000)]
@@ -85,23 +100,33 @@ namespace NewLife.Cube
 
         /// <summary>强制SSL。强制使用https访问</summary>
         [Description("强制SSL。强制使用https访问")]
-        public Boolean ForceSSL { get; set; }
+        public SslModes SslMode { get; set; } = SslModes.Disable;
+
+        /// <summary>启用压缩。默认false</summary>
+        [Description("启用压缩。默认false")]
+        public Boolean EnableCompress { get; set; }
 
         /// <summary>头像目录。设定后下载远程头像到本地</summary>
         [Description("头像目录。设定后下载远程头像到本地")]
         public String AvatarPath { get; set; } = "..\\Avatars";
+
+        ///// <summary>安全密钥。用于加密Cookie等通信内容</summary>
+        //[Description("安全密钥。用于加密Cookie等通信内容")]
+        //public String SecurityKey { get; set; }
         #endregion
 
         #region 方法
         /// <summary>实例化</summary>
-        public Setting()
-        {
-        }
+        public Setting() { }
 
         /// <summary>加载时触发</summary>
         protected override void OnLoaded()
         {
-            if (StartPage.IsNullOrEmpty()) StartPage = HttpRuntime.AppDomainAppVirtualPath.EnsureEnd("/") + "Admin/Index/Main";
+#if __CORE__
+            if (StartPage.IsNullOrEmpty()) StartPage = NewLife.Web.HttpContext.Current?.Request.PathBase.ToString().EnsureEnd("/") + "Admin/Index/Main";
+#else
+            if (StartPage.IsNullOrEmpty()) StartPage = System.Web.HttpRuntime.AppDomainAppVirtualPath.EnsureEnd("/") + "Admin/Index/Main";
+#endif
 
             base.OnLoaded();
         }

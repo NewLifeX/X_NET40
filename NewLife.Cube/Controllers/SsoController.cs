@@ -1,13 +1,19 @@
 ﻿using System;
 using System.IO;
 using System.Linq;
-using System.Web.Mvc;
 using NewLife.Cube.Entity;
 using NewLife.Cube.Web;
 using NewLife.Log;
 using NewLife.Model;
 using NewLife.Web;
 using XCode.Membership;
+#if __CORE__
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+#else
+using System.Web;
+using System.Web.Mvc;
+#endif
 
 /*
  * 魔方OAuth在禁用本地登录，且只设置一个第三方登录时，形成单点登录。
@@ -39,21 +45,26 @@ using XCode.Membership;
 namespace NewLife.Cube.Controllers
 {
     /// <summary>单点登录控制器</summary>
-    public class SsoController : Controller
+    public class SsoController : ControllerBaseX
     {
         /// <summary>当前提供者</summary>
         public static SsoProvider Provider { get; set; }
+
+        /// <summary>单点登录服务端</summary>
+        public static OAuthServer OAuth { get; set; }
 
         static SsoController()
         {
             // 注册单点登录
             var oc = ObjectContainer.Current;
-            oc.Register<SsoProvider, SsoProvider>();
+            oc.AutoRegister<SsoProvider, SsoProvider>();
+            oc.AutoRegister<OAuthServer, OAuthServer2>();
 
             Provider = ObjectContainer.Current.ResolveInstance<SsoProvider>();
+            OAuth = ObjectContainer.Current.ResolveInstance<OAuthServer>();
 
             //OAuthServer.Instance.Log = XTrace.Log;
-            OAuthServer.Instance.Log = LogProvider.Provider.AsLog("OAuth");
+            OAuth.Log = LogProvider.Provider.AsLog("OAuth");
         }
 
         /// <summary>首页</summary>
@@ -61,6 +72,7 @@ namespace NewLife.Cube.Controllers
         [AllowAnonymous]
         public virtual ActionResult Index() => Redirect("~/");
 
+#if !__CORE__
         /// <summary>发生错误时</summary>
         /// <param name="filterContext"></param>
         protected override void OnException(ExceptionContext filterContext)
@@ -79,6 +91,7 @@ namespace NewLife.Cube.Controllers
 
             base.OnException(filterContext);
         }
+#endif
 
         #region 单点登录客户端
         /// <summary>第三方登录</summary>
@@ -92,7 +105,7 @@ namespace NewLife.Cube.Controllers
             var rurl = prov.GetReturnUrl(Request, true);
             var redirect = prov.GetRedirect(Request, rurl);
 
-            var state = Request["state"];
+            var state = GetRequest("state");
             if (!state.IsNullOrEmpty())
                 state = client.Name + "_" + state;
             else
@@ -155,11 +168,15 @@ namespace NewLife.Cube.Controllers
                 // 获取用户信息
                 if (!client.UserUrl.IsNullOrEmpty()) client.GetUserInfo();
 
+#if __CORE__
+                var url = prov.OnLogin(client, HttpContext.RequestServices);
+#else
                 var url = prov.OnLogin(client, HttpContext);
+#endif
 
                 // 标记登录提供商
-                Session["Cube_Sso"] = client.Name;
-                Session["Cube_Sso_Client"] = client;
+                SetSession("Cube_Sso", client.Name);
+                SetSession("Cube_Sso_Client", client);
 
                 if (!returnUrl.IsNullOrEmpty()) url = returnUrl;
 
@@ -170,7 +187,14 @@ namespace NewLife.Cube.Controllers
                 XTrace.WriteException(ex.GetTrue());
                 //throw;
 
-                return RedirectToAction("Login", new { name = client.Name, r = returnUrl, state = "refresh" });
+                if (!state.EqualIgnoreCase("refresh")) return RedirectToAction("Login", new { name = client.Name, r = returnUrl, state = "refresh" });
+
+#if __CORE__
+                return View("CubeError", ex);
+#else
+                var inf = new HandleErrorInfo(ex, "Sso", nameof(LoginInfo));
+                return View("CubeError", inf);
+#endif
             }
         }
 
@@ -183,7 +207,7 @@ namespace NewLife.Cube.Controllers
         public virtual ActionResult Logout()
         {
             // 先读Session，待会会清空
-            var client = Session["Cube_Sso_Client"] as OAuthClient;
+            var client = GetSession<OAuthClient>("Cube_Sso_Client");
 
             var prv = Provider;
             prv?.Logout();
@@ -196,10 +220,10 @@ namespace NewLife.Cube.Controllers
                 if (!client.LogoutUrl.IsNullOrEmpty())
                 {
                     // 准备返回地址
-                    url = Request["r"];
+                    url = GetRequest("r");
                     if (url.IsNullOrEmpty()) url = prv.SuccessUrl;
 
-                    var state = Request["state"];
+                    var state = GetRequest("state");
                     if (!state.IsNullOrEmpty())
                         state = client.Name + "_" + state;
                     else
@@ -228,12 +252,16 @@ namespace NewLife.Cube.Controllers
             var user = prov.Current;
             if (user == null) throw new Exception("未登录！");
 
-            //return Login(id, Request.UrlReferrer + "");
+#if __CORE__
+            var url = Request.Headers["Referer"].FirstOrDefault() + "";
+#else
+            var url = Request.UrlReferrer + "";
+#endif
             var client = prov.GetClient(id);
-            var redirect = prov.GetRedirect(Request, Request.UrlReferrer + "");
+            var redirect = prov.GetRedirect(Request, url);
             // 附加绑定动作
             redirect += "&sso_action=bind";
-            var url = client.Authorize(redirect, client.Name);
+            url = client.Authorize(redirect, client.Name);
 
             return Redirect(url);
         }
@@ -255,7 +283,11 @@ namespace NewLife.Cube.Controllers
                 uc.Save();
             }
 
+#if __CORE__
+            var url = Request.Headers["Referer"].FirstOrDefault() + "";
+#else
             var url = Request.UrlReferrer + "";
+#endif
             if (url.IsNullOrEmpty()) url = "/";
 
             return Redirect(url);
@@ -282,16 +314,15 @@ namespace NewLife.Cube.Controllers
             if (response_type.IsNullOrEmpty()) response_type = "code";
 
             // 判断合法性，然后跳转到登录页面，登录完成后跳转回来
-            var sso = OAuthServer.Instance;
-            var key = sso.Authorize(client_id, redirect_uri, response_type, scope, state);
+            var key = OAuth.Authorize(client_id, redirect_uri, response_type, scope, state);
 
             var prov = Provider;
             var url = "";
 
             // 如果已经登录，直接返回。否则跳到登录页面
-            var user = prov?.Current;
+            var user = prov?.Current ?? prov?.Provider.TryLogin();
             if (user != null)
-                url = sso.GetResult(key, user);
+                url = OAuth.GetResult(key, user);
             else
                 url = prov.LoginUrl.AppendReturn("~/Sso/Auth2/" + key);
 
@@ -308,16 +339,22 @@ namespace NewLife.Cube.Controllers
         {
             if (id <= 0) throw new ArgumentNullException(nameof(id));
 
-            var sso = OAuthServer.Instance;
-
             var user = Provider?.Current;
-            if (user == null) throw new InvalidOperationException("未登录！");
+            //if (user == null) throw new InvalidOperationException("未登录！");
+            // 未登录时跳转到登录页面，重新认证
+            if (user == null)
+            {
+                var prov = Provider;
+                var url2 = prov.LoginUrl.AppendReturn("~/Sso/Auth2/" + id);
+
+                return Redirect(url2);
+            }
 
             // 返回给子系统的数据：
             // code 授权码，子系统凭借该代码来索取用户信息
             // state 子系统传过来的用户状态数据，原样返回
 
-            var url = sso.GetResult(id, user);
+            var url = OAuth.GetResult(id, user);
 
             return Redirect(url);
         }
@@ -340,26 +377,34 @@ namespace NewLife.Cube.Controllers
             if (code.IsNullOrEmpty()) throw new ArgumentNullException(nameof(code));
             if (grant_type.IsNullOrEmpty()) grant_type = "authorization_code";
 
+            if (!grant_type.EqualIgnoreCase("authorization_code")) throw new NotSupportedException(nameof(grant_type));
+
             // 返回给子系统的数据：
             // access_token 访问令牌
             // expires_in 有效期
             // refresh_token 刷新令牌
             // openid 用户唯一标识
 
-            var sso = OAuthServer.Instance;
             try
             {
-                //var token = sso.GetToken(code);
-                var rs = Provider.GetAccessToken(sso, code);
+                var rs = Provider.GetAccessToken(OAuth, client_id, client_secret, code);
 
                 // 返回UserInfo告知客户端可以请求用户信息
+#if __CORE__
+                return Json(rs);
+#else
                 return Json(rs, JsonRequestBehavior.AllowGet);
+#endif
             }
             catch (Exception ex)
             {
                 XTrace.WriteLine($"Access_Token client_id={client_id} client_secret={client_secret} code={code}");
                 XTrace.WriteException(ex);
+#if __CORE__
+                return Json(new { error = ex.GetTrue().Message });
+#else
                 return Json(new { error = ex.GetTrue().Message }, JsonRequestBehavior.AllowGet);
+#endif
             }
         }
 
@@ -371,20 +416,21 @@ namespace NewLife.Cube.Controllers
         {
             if (access_token.IsNullOrEmpty()) throw new ArgumentNullException(nameof(access_token));
 
-            var sso = OAuthServer.Instance;
+            var sso = OAuth;
             IManageUser user = null;
 
             var msg = "";
             try
             {
-                //var username = sso.Decode(access_token);
-
                 user = Provider?.GetUser(sso, access_token);
-                //if (user == null) throw new Exception("用户不存在 " + username);
                 if (user == null) throw new Exception("用户不存在");
 
                 var rs = Provider.GetUserInfo(sso, access_token, user);
+#if __CORE__
+                return Json(rs);
+#else
                 return Json(rs, JsonRequestBehavior.AllowGet);
+#endif
             }
             catch (Exception ex)
             {
@@ -392,7 +438,11 @@ namespace NewLife.Cube.Controllers
 
                 XTrace.WriteLine($"UserInfo {access_token}");
                 XTrace.WriteException(ex);
+#if __CORE__
+                return Json(new { error = ex.GetTrue().Message });
+#else
                 return Json(new { error = ex.GetTrue().Message }, JsonRequestBehavior.AllowGet);
+#endif
             }
             finally
             {

@@ -15,14 +15,14 @@
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
-    <OutputPath>..\..\XCoder\</OutputPath>
+    <OutputPath>..\..\XCoder4\</OutputPath>
     <DefineConstants>TRACE;DEBUG;NET4</DefineConstants>
     <DebugType>full</DebugType>
     <PlatformTarget>AnyCPU</PlatformTarget>
     <Prefer32Bit>false</Prefer32Bit>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
-    <OutputPath>..\..\XCoder\</OutputPath>
+    <OutputPath>..\..\XCoder4\</OutputPath>
     <DefineConstants>TRACE;NET4</DefineConstants>
     <Optimize>true</Optimize>
     <DebugType>pdbonly</DebugType>

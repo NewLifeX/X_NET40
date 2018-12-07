@@ -1,6 +1,7 @@
 ﻿@using System.Diagnostics;
 @using System.Collections;
 @using System.Reflection;
+@using System.Runtime;
 @using System.Runtime.Versioning;
 @using NewLife.Common;
 @using NewLife.Web;
@@ -13,6 +14,9 @@
     var att = asm.GetCustomAttribute<TargetFrameworkAttribute>();
     var ver = att.FrameworkDisplayName ?? att.FrameworkName;
     var req = HttpContext.Current.Request;
+
+    // GC设置
+    var gc = "IsServerGC={0},LatencyMode={1}".F(GCSettings.IsServerGC, GCSettings.LatencyMode);
 }
 <table class="table table-bordered table-hover table-striped table-condensed">
     <thead>
@@ -79,7 +83,7 @@
                 操作系统：
             </td>
             <td class="value">
-                @Runtime.OSName
+                @*@Runtime.OSName*@ @Environment.OSVersion
             </td>
             <td class="name">
                 Web服务器：
@@ -94,7 +98,7 @@
             </td>
             <td class="value">
                 @Environment.ProcessorCount
-                核心
+                核心，@gc
             </td>
             <td class="name">
                 时间：
@@ -109,11 +113,12 @@
                 内存：
             </td>
             <td class="value">
-                物理内存：@(Runtime.AvailableMemory.ToString("n0"))M / @(Runtime.PhysicalMemory.ToString("n0"))M
+                @*物理内存：@(Runtime.AvailableMemory.ToString("n0"))M / @(Runtime.PhysicalMemory.ToString("n0"))M*@
                 工作集: @((process.WorkingSet64 / 1024 / 1024).ToString("n0"))M
                 提交: @((process.PrivateMemorySize64 / 1024 / 1024).ToString("n0"))M
                 GC: @((GC.GetTotalMemory(false) / 1024 / 1024).ToString("n0"))M
                 <a href="@Url.Action("Main/ProcessModules")" target="_blank" title="点击打开进程模块列表">模块列表</a>
+                <a href="@Url.Action("MemoryFree")" title="点击释放进程内存">释放内存</a>
             </td>
             <td class="name">
                 进程时间：

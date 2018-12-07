@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using System.Web;
 using NewLife.Cube.Entity;
 using NewLife.Log;
 using NewLife.Model;
@@ -11,6 +10,13 @@ using NewLife.Reflection;
 using NewLife.Security;
 using NewLife.Web;
 using XCode.Membership;
+#if __CORE__
+using Microsoft.AspNetCore.Http;
+using IHttpRequest = Microsoft.AspNetCore.Http.HttpRequest;
+#else
+using IHttpRequest = System.Web.HttpRequestBase;
+using HttpRequest = System.Web.HttpRequest;
+#endif
 
 namespace NewLife.Cube.Web
 {
@@ -55,11 +61,18 @@ namespace NewLife.Cube.Web
         /// <param name="request">请求对象</param>
         /// <param name="referr">是否使用引用</param>
         /// <returns></returns>
-        public virtual String GetReturnUrl(HttpRequestBase request, Boolean referr)
+        public virtual String GetReturnUrl(IHttpRequest request, Boolean referr)
         {
-            var url = request["r"];
-            if (url.IsNullOrEmpty()) url = request["redirect_uri"];
-            if (url.IsNullOrEmpty() && referr) url = request.UrlReferrer + "";
+            var url = request.Get("r");
+            if (url.IsNullOrEmpty()) url = request.Get("redirect_uri");
+            if (url.IsNullOrEmpty() && referr)
+            {
+#if __CORE__
+                url = request.Headers["Referer"].FirstOrDefault() + "";
+#else
+                url = request.UrlReferrer + "";
+#endif
+            }
             if (!url.IsNullOrEmpty() && url.StartsWithIgnoreCase("http"))
             {
                 var baseUri = request.GetRawUrl();
@@ -75,9 +88,9 @@ namespace NewLife.Cube.Web
         /// <param name="request"></param>
         /// <param name="returnUrl"></param>
         /// <returns></returns>
-        public virtual String GetRedirect(HttpRequestBase request, String returnUrl = null)
+        public virtual String GetRedirect(IHttpRequest request, String returnUrl = null)
         {
-            if (returnUrl.IsNullOrEmpty()) returnUrl = request["r"];
+            if (returnUrl.IsNullOrEmpty()) returnUrl = request.Get("r");
             // 过滤环回重定向
             if (!returnUrl.IsNullOrEmpty() && returnUrl.StartsWithIgnoreCase("/Sso/Login")) returnUrl = null;
 
@@ -104,7 +117,7 @@ namespace NewLife.Cube.Web
             // 强行绑定，把第三方账号强行绑定到当前已登录账号
             var forceBind = false;
             var req = context.GetService<HttpRequest>();
-            if (req != null) forceBind = req["sso_action"].EqualIgnoreCase("bind");
+            if (req != null) forceBind = req.Get("sso_action").EqualIgnoreCase("bind");
 
             // 检查绑定，新用户的uc.UserID为0
             var prv = Provider;
@@ -121,7 +134,16 @@ namespace NewLife.Cube.Web
                 user3.LastLoginIP = WebHelper.UserHost;
                 user3.Save();
             }
-            uc.Save();
+
+            try
+            {
+                uc.Save();
+            }
+            catch (Exception ex)
+            {
+                //为了防止某些特殊数据导致的无法正常登录，把所有异常记录到日志当中。忽略错误
+                XTrace.WriteException(ex);
+            }
 
             if (!user.Enable) throw new InvalidOperationException("用户已禁用！");
 
@@ -133,7 +155,7 @@ namespace NewLife.Cube.Web
             var set = Setting.Current;
             if (set.SessionTimeout > 0) prv.SaveCookie(user, TimeSpan.FromSeconds(set.SessionTimeout), context);
 
-            LogProvider.Provider.WriteLog(user.GetType(), client.Name, "单点登录", user.ID, user + "", req.UserHostAddress);
+            LogProvider.Provider.WriteLog(user.GetType(), client.Name, "单点登录", user.ID, user + "", req.GetUserHost());
 
             return SuccessUrl;
         }
@@ -244,11 +266,13 @@ namespace NewLife.Cube.Web
         #region 服务端
         /// <summary>获取访问令牌</summary>
         /// <param name="sso"></param>
+        /// <param name="client_id"></param>
+        /// <param name="client_secret"></param>
         /// <param name="code"></param>
         /// <returns></returns>
-        public virtual Object GetAccessToken(OAuthServer sso, String code)
+        public virtual Object GetAccessToken(OAuthServer sso, String client_id, String client_secret, String code)
         {
-            var token = sso.GetToken(code);
+            var token = sso.GetToken(client_id, client_secret, code);
 
             return new
             {

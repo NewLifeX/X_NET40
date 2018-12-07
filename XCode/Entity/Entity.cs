@@ -116,17 +116,21 @@ namespace XCode
             {
                 entity.OnLoad();
             }
+        }
 
+        private static void LoadSingleCache(IEnumerable<TEntity> list)
+        {
             // 如果正在使用单对象缓存，则批量进入
+            //!!! 特别注意，如果列表查询指定了列名，可能会导致实体错误覆盖单对象缓存
             var sc = Meta.SingleCache;
             if (sc.Using)
             {
                 // 查询列表异步加入对象缓存
                 ThreadPoolX.QueueUserWorkItem(es =>
                 {
-                    for (var i = 0; i < es.Count; i++)
+                    foreach (var entity in es)
                     {
-                        sc.Add(es[i]);
+                        sc.Add(entity);
                     }
                 }, list);
             }
@@ -229,12 +233,24 @@ namespace XCode
             var fi = Meta.Table.Identity;
             if (fi != null) return Convert.ToInt64(this[fi.Name]) > 0 ? Update() : Insert();
 
+            /*
+             * 慈母手中线，游子身上衣。
+             * 淳淳教诲时，草木尽芬芳。
+             */
+
             // 如果唯一主键不为空，应该通过后面判断，而不是直接Update
-            if (IsNullKey) return Insert();
+            var isnew = IsNullKey;
+            if (isnew) return Insert();
 
             // Oracle/MySql批量插入
             var db = Meta.Session.Dal;
-            if (db.SupportBatch) return this.InsertOrUpdate();
+            if (db.SupportBatch)
+            {
+                Valid(isnew);
+                if (!Meta.Modules.Valid(this, isnew)) return -1;
+
+                return this.InsertOrUpdate();
+            }
 
             return FindCount(Persistence.GetPrimaryCondition(this), null, null, 0, 0) > 0 ? Update() : Insert();
         }
@@ -487,6 +503,9 @@ namespace XCode
             //var list = session.Query(builder, 0, 0, LoadData);
             if (list == null || list.Count < 1) return null;
 
+            // 如果正在使用单对象缓存，则批量进入
+            LoadSingleCache(list);
+
             if (list.Count > 1 && DAL.Debug)
             {
                 DAL.WriteLog("调用FindUnique(\"{0}\")不合理，只有返回唯一记录的查询条件才允许调用！", wh);
@@ -512,7 +531,12 @@ namespace XCode
         /// <returns></returns>
         public static TEntity Find(Expression where)
         {
-            var list = FindAll(where, null, null, 0, 1);
+            var max = 1;
+
+            // 优待主键查询
+            if (where is FieldExpression fe && fe.Field != null && fe.Field.PrimaryKey) max = 0;
+
+            var list = FindAll(where, null, null, 0, max);
             return list.Count < 1 ? null : list[0];
         }
 
@@ -639,8 +663,12 @@ namespace XCode
             var session = Meta.Session;
 
             var builder = CreateBuilder(where, order, selects, startRowIndex, maximumRows);
-            return LoadData(session.Query(builder, startRowIndex, maximumRows));
-            //return session.Query(builder, startRowIndex, maximumRows, LoadData);
+            var list = LoadData(session.Query(builder, startRowIndex, maximumRows));
+
+            // 如果正在使用单对象缓存，则批量进入
+            if (selects.IsNullOrEmpty() || selects == "*") LoadSingleCache(list);
+
+            return list;
         }
 
         /// <summary>最标准的查询数据。没有数据时返回空集合而不是null</summary>
@@ -731,14 +759,16 @@ namespace XCode
                     {
                         // 最大可用行数改为实际最大可用行数
                         var max = (Int32)Math.Min(maximumRows, count - startRowIndex);
-                        //if (max <= 0) return null;
                         if (max <= 0) return new List<TEntity>();
-                        var start = (Int32)(count - (startRowIndex + maximumRows));
 
+                        var start = (Int32)(count - (startRowIndex + maximumRows));
                         var builder2 = CreateBuilder(where, order2, selects, start, max);
                         var list = LoadData(session.Query(builder2, start, max));
-                        //var list = session.Query(builder2, start, max, LoadData);
                         if (list == null || list.Count < 1) return list;
+
+                        // 如果正在使用单对象缓存，则批量进入
+                        if (selects.IsNullOrEmpty() || selects == "*") LoadSingleCache(list);
+
                         // 因为这样取得的数据是倒过来的，所以这里需要再倒一次
                         list.Reverse();
                         return list;
@@ -748,8 +778,12 @@ namespace XCode
             #endregion
 
             var builder = CreateBuilder(where, order, selects, startRowIndex, maximumRows);
-            return LoadData(session.Query(builder, startRowIndex, maximumRows));
-            //return session.Query(builder, startRowIndex, maximumRows, LoadData);
+            var list2 = LoadData(session.Query(builder, startRowIndex, maximumRows));
+
+            // 如果正在使用单对象缓存，则批量进入
+            if (selects.IsNullOrEmpty() || selects == "*") LoadSingleCache(list2);
+
+            return list2;
         }
 
         /// <summary>同时查询满足条件的记录集和记录总数。没有数据时返回空集合而不是null</summary>
@@ -768,7 +802,7 @@ namespace XCode
                 var rows = 0L;
 
                 // 如果总记录数超过10万，为了提高性能，返回快速查找且带有缓存的总记录数
-                if ((where == null || where is WhereExpression wh && wh.Empty) && session.LongCount > 100000)
+                if ((where == null || where is WhereExpression wh && wh.Empty) && session.LongCount > 100_000)
                     rows = session.LongCount;
                 else
                     rows = FindCount(where, null, selects, 0, 0);
@@ -777,11 +811,28 @@ namespace XCode
                 page.TotalCount = rows;
             }
 
+            // 统计数据。100万以上数据要求带where才支持统计
+            if (page.RetrieveState && page.State == null && (Meta.Session.LongCount < 1_000_000 || where != null))
+            {
+                // 找到所有数字字段，进行求和统计
+                var numbers = Meta.Fields.Where(e => e.Type.IsInt() && !e.IsIdentity).ToList();
+                if (numbers.Count > 0)
+                {
+                    var concat = new ConcatExpression();
+                    foreach (var item in numbers)
+                    {
+                        concat &= item.Sum();
+                    }
+                    page.State = FindAll(where, null, concat).FirstOrDefault();
+                }
+            }
+
             // 验证排序字段，避免非法
             var orderby = page.OrderBy;
             if (!page.Sort.IsNullOrEmpty())
             {
                 var st = Meta.Table.FindByName(page.Sort);
+                page.OrderBy = null;
                 page.Sort = st?.FormatedName;
                 orderby = page.OrderBy;
 
@@ -1210,10 +1261,6 @@ namespace XCode
                     if (pi != null && pi.CanRead) return this.GetValue(pi);
                 }
 
-                //// 尝试匹配属性
-                //var property = GetType().GetPropertyEx(name, true);
-                //if (property != null && property.CanRead) return this.GetValue(property);
-
                 // 检查动态增加的字段，返回默认值
                 var f = Meta.Table.FindByName(name) as FieldItem;
 
@@ -1224,10 +1271,9 @@ namespace XCode
                     return obj;
                 }
 
-                if (f != null && f.IsDynamic)
-                {
-                    return f.Type.CreateInstance();
-                }
+                if (f != null && f.IsDynamic) return f.Type.CreateInstance();
+
+                if (_Extends != null) return Extends[name];
 
                 return null;
             }
@@ -1243,14 +1289,6 @@ namespace XCode
                         return;
                     }
                 }
-
-                ////尝试匹配属性
-                //var property = GetType().GetPropertyEx(name, true);
-                //if (property != null && property.CanWrite)
-                //{
-                //    this.SetValue(property, value);
-                //    return;
-                //}
 
                 // 检查动态增加的字段，返回默认值
                 if (Meta.Table.FindByName(name) is FieldItem f && f.IsDynamic) value = value.ChangeType(f.Type);

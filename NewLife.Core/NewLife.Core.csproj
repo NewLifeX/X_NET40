@@ -12,28 +12,27 @@
     <AssemblyName>NewLife.Core</AssemblyName>
     <FileAlignment>512</FileAlignment>
     <BuildPackage>true</BuildPackage>
+    <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|AnyCPU'">
     <DebugSymbols>true</DebugSymbols>
     <OutputPath>..\..\Bin\</OutputPath>
-    <DefineConstants>TRACE;DEBUG</DefineConstants>
+    <DefineConstants>TRACE;DEBUG;NET4</DefineConstants>
     <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
     <DocumentationFile>..\..\Bin\NewLife.Core.XML</DocumentationFile>
     <DebugType>full</DebugType>
     <PlatformTarget>AnyCPU</PlatformTarget>
     <ErrorReport>prompt</ErrorReport>
-    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|AnyCPU'">
     <OutputPath>..\..\Bin\</OutputPath>
-    <DefineConstants>TRACE</DefineConstants>
+    <DefineConstants>TRACE;NET4</DefineConstants>
     <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
     <DocumentationFile>..\..\Bin\NewLife.Core.XML</DocumentationFile>
     <Optimize>true</Optimize>
     <DebugType>pdbonly</DebugType>
     <PlatformTarget>AnyCPU</PlatformTarget>
     <ErrorReport>prompt</ErrorReport>
-    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="Microsoft.CSharp" />
@@ -42,10 +41,7 @@
     <Reference Include="System.Configuration" />
     <Reference Include="System.Data" />
     <Reference Include="System.Drawing" />
-    <Reference Include="System.IO.Compression" />
-    <Reference Include="System.IO.Compression.FileSystem" />
     <Reference Include="System.Management" />
-    <Reference Include="System.Net.Http" />
     <Reference Include="System.ServiceProcess" />
     <Reference Include="System.Web" />
     <Reference Include="System.Web.Extensions" />
@@ -83,7 +79,9 @@
     <Compile Include="Collections\CollectionHelper.cs" />
     <Compile Include="Collections\ConcurrentHashSet.cs" />
     <Compile Include="Collections\DictionaryCache.cs" />
+    <Compile Include="Collections\IPool.cs" />
     <Compile Include="Collections\NullableDictionary.cs" />
+    <Compile Include="Collections\ObjectPool.cs" />
     <Compile Include="Collections\Pool.cs" />
     <Compile Include="Common\CombGuid.cs" />
     <Compile Include="Common\PinYin.cs" />
@@ -97,6 +95,8 @@
     <Compile Include="Compression\ZipFile.cs" />
     <Compile Include="Configuration\CombConfig.cs" />
     <Compile Include="Data\BinaryTree.cs" />
+    <Compile Include="Data\DbRow.cs" />
+    <Compile Include="Data\DbTable.cs" />
     <Compile Include="Data\GeoArea.cs" />
     <Compile Include="Data\GeoAddress.cs" />
     <Compile Include="Data\GeoPoint.cs" />
@@ -115,6 +115,7 @@
     <Compile Include="Http\HttpResponse.cs" />
     <Compile Include="Http\HttpServer.cs" />
     <Compile Include="Http\TinyHttpClient.cs" />
+    <Compile Include="IO\CsvFile.cs" />
     <Compile Include="IO\EncodingHelper.cs" />
     <Compile Include="IO\PathHelper.cs" />
     <Compile Include="Json\JsonConfig.cs" />
@@ -123,6 +124,7 @@
     <Compile Include="Log\ActionLog.cs" />
     <Compile Include="Log\CompositeLog.cs" />
     <Compile Include="Log\ConsoleLog.cs" />
+    <Compile Include="Log\ICounter.cs" />
     <Compile Include="Log\ILog.cs" />
     <Compile Include="Log\Logger.cs" />
     <Compile Include="Log\LogLevel.cs" />
@@ -138,18 +140,18 @@
     <Compile Include="Messaging\IMessage.cs">
       <SubType>Code</SubType>
     </Compile>
-    <Compile Include="Messaging\MessageBase.cs">
-      <SubType>Code</SubType>
-    </Compile>
     <Compile Include="Messaging\MessageEventArgs.cs" />
+    <Compile Include="Model\Actor.cs" />
     <Compile Include="Model\IFactory.cs" />
-    <Compile Include="Model\IHistory.cs" />
+    <Compile Include="Model\IHandler.cs" />
+    <Compile Include="Model\IHandlerContext.cs" />
     <Compile Include="Model\IAuthUser.cs" />
-    <Compile Include="Model\IOnline.cs" />
+    <Compile Include="Model\IPipeline.cs" />
     <Compile Include="Model\IPlugin.cs" />
     <Compile Include="Model\IManageUser.cs" />
     <Compile Include="Model\ModelExtension.cs" />
     <Compile Include="Model\ObjectContainerHelper.cs" />
+    <Compile Include="Net\NetHandlerContext.cs" />
     <Compile Include="Remoting\ApiAction.cs" />
     <Compile Include="Remoting\ApiAttribute.cs" />
     <Compile Include="Remoting\ApiClient.cs" />
@@ -169,6 +171,7 @@
     <Compile Include="Remoting\IApiSession.cs" />
     <Compile Include="Remoting\IEncoder.cs" />
     <Compile Include="Remoting\JsonEncoder.cs" />
+    <Compile Include="Serialization\Accessor.cs" />
     <Compile Include="Serialization\BinaryCodec2.cs" />
     <Compile Include="Serialization\JsonCodec2.cs" />
     <Compile Include="Serialization\JsonCodec.cs" />
@@ -176,8 +179,6 @@
     <Compile Include="Net\Handlers\StandardCodec.cs" />
     <Compile Include="Net\Handlers\LengthFieldCodec.cs" />
     <Compile Include="Net\Handlers\MessageCodec.cs" />
-    <Compile Include="Net\Handlers\IHandler.cs" />
-    <Compile Include="Net\Handlers\IHandlerContext.cs" />
     <Compile Include="Net\INetSession.cs" />
     <Compile Include="Net\Handlers\IMatchQueue.cs" />
     <Compile Include="Net\ISocket.cs" />
@@ -187,7 +188,6 @@
     <Compile Include="Net\NetHelper.cs" />
     <Compile Include="Net\NetServer.cs" />
     <Compile Include="Net\NetSession.cs" />
-    <Compile Include="Net\IPipeline.cs" />
     <Compile Include="Net\ReceivedEventArgs.cs" />
     <Compile Include="Net\ITransport.cs" />
     <Compile Include="Net\NetUri.cs" />
@@ -263,9 +263,7 @@
     <Compile Include="Serialization\Json\JsonReader.cs" />
     <Compile Include="Serialization\Json\JsonTest.cs" />
     <Compile Include="Serialization\Json\JsonWriter.cs" />
-    <Compile Include="Serialization\Protocol.cs">
-      <SubType>Code</SubType>
-    </Compile>
+    <Compile Include="Serialization\SerialHelper.cs" />
     <Compile Include="Serialization\Xml\XmlList.cs" />
     <Compile Include="Serialization\Xml\XmlComposite.cs" />
     <Compile Include="Serialization\Xml\XmlGeneral.cs" />
@@ -277,10 +275,30 @@
     <Compile Include="Reflection\IIndexAccessor.cs" />
     <Compile Include="Security\Crc32.cs" />
     <Compile Include="Common\IdentityCard.cs" />
+    <Compile Include="Threading\AsyncMethodBuilderCore.cs" />
+    <Compile Include="Threading\AsyncMethodTaskCache.cs" />
+    <Compile Include="Threading\AsyncServices.cs" />
+    <Compile Include="Threading\AsyncTaskMethodBuilder.cs" />
+    <Compile Include="Threading\AsyncVoidMethodBuilder.cs" />
+    <Compile Include="Threading\AwaitExtensions.cs" />
+    <Compile Include="Threading\ConfiguredTaskAwaitable.cs" />
+    <Compile Include="Threading\ExecutionContextLightup.cs" />
+    <Compile Include="Threading\IAsyncMethodBuilder.cs" />
+    <Compile Include="Threading\IAsyncStateMachine.cs" />
+    <Compile Include="Threading\ICriticalNotifyCompletion.cs" />
+    <Compile Include="Threading\INotifyCompletion.cs" />
+    <Compile Include="Threading\Lightup.cs" />
+    <Compile Include="Threading\LightupServices.cs" />
+    <Compile Include="Threading\LightupType.cs" />
+    <Compile Include="Threading\TaskAwaiter.cs" />
+    <Compile Include="Threading\TaskEx.cs" />
     <Compile Include="Threading\TaskHelper.cs" />
     <Compile Include="Threading\ThreadPoolX.cs" />
+    <Compile Include="Threading\TimerManager.cs" />
     <Compile Include="Threading\TimerX.cs" />
     <Compile Include="Threading\TimerScheduler.cs" />
+    <Compile Include="Threading\VoidTaskResult.cs" />
+    <Compile Include="Threading\YieldAwaitable.cs" />
     <Compile Include="Web\OAuth\GithubClient.cs" />
     <Compile Include="Web\OAuth\TaobaoClient.cs" />
     <Compile Include="Web\OAuth\WeixinClient.cs" />
@@ -327,6 +345,9 @@
       <DependentUpon>SerialPortList.cs</DependentUpon>
     </EmbeddedResource>
     <Compile Include="Extension\EndPointExtensions.cs" />
+    <None Include="Caching\Readme.MD" />
+    <None Include="Log\Readme.md" />
+    <None Include="Net\Readme.md" />
     <None Include="Remoting\ApiClient.cd" />
     <None Include="Remoting\ApiServer.cd" />
     <None Include="X组件.txt" />

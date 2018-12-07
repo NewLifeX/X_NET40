@@ -11,20 +11,19 @@
     <RootNamespace>XCode</RootNamespace>
     <AssemblyName>XCode</AssemblyName>
     <SignAssembly>false</SignAssembly>
+    <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|AnyCPU'">
-    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
     <DebugSymbols>true</DebugSymbols>
     <OutputPath>..\..\Bin\</OutputPath>
-    <DefineConstants>TRACE;DEBUG</DefineConstants>
+    <DefineConstants>TRACE;DEBUG;NET4</DefineConstants>
     <DocumentationFile>..\..\Bin\XCode.XML</DocumentationFile>
     <DebugType>full</DebugType>
     <PlatformTarget>AnyCPU</PlatformTarget>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|AnyCPU'">
-    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
     <OutputPath>..\..\Bin\</OutputPath>
-    <DefineConstants>TRACE</DefineConstants>
+    <DefineConstants>TRACE;NET4</DefineConstants>
     <DocumentationFile>..\..\Bin\XCode.XML</DocumentationFile>
     <Optimize>true</Optimize>
     <WarningLevel>2</WarningLevel>
@@ -33,10 +32,6 @@
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="Microsoft.CSharp" />
-    <Reference Include="NewLife.Core, Version=6.6.6682.20124, Culture=neutral, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>G:\2018\Yunt\Yunt\commondll\netcoreapp2.0\NewLife.Core.dll</HintPath>
-    </Reference>
     <Reference Include="System" />
     <Reference Include="System.configuration" />
     <Reference Include="System.Data" />
@@ -68,7 +63,9 @@
     <Compile Include="DataAccessLayer\Common\ConnectionPool.cs" />
     <Compile Include="DataAccessLayer\Common\DataResult.cs" />
     <Compile Include="DataAccessLayer\Common\ITransaction.cs" />
+    <Compile Include="DataAccessLayer\DAL_Backup.cs" />
     <Compile Include="DataAccessLayer\Database\Access.cs" />
+    <Compile Include="DataAccessLayer\Database\Network.cs" />
     <Compile Include="DataAccessLayer\Database\SqlCe.cs" />
     <Compile Include="DataAccessLayer\Model\IModelResolver.cs">
       <SubType>Code</SubType>
@@ -80,6 +77,7 @@
     <Compile Include="Entity\EntitySplit.cs" />
     <Compile Include="Entity\IEntityAddition.cs" />
     <Compile Include="Entity\EntitySession.cs" />
+    <Compile Include="Entity\IEntityList.cs" />
     <Compile Include="Entity\IEntityModule.cs" />
     <Compile Include="Entity\IEntitySession.cs" />
     <Compile Include="Events\ActionDelegatedEventHandler.cs" />
@@ -93,6 +91,11 @@
     <Compile Include="Cache\FieldCache.cs" />
     <Compile Include="Extension\数据缓存.Biz.cs" />
     <Compile Include="Extension\数据缓存.cs" />
+    <Compile Include="Extension\生成实体类.cs">
+      <AutoGen>True</AutoGen>
+      <DesignTime>True</DesignTime>
+      <DependentUpon>生成实体类.tt</DependentUpon>
+    </Compile>
     <Compile Include="Membership\LogEntity.cs" />
     <Compile Include="Membership\IManageProvider.cs" />
     <Compile Include="Membership\MenuProvider.cs" />
@@ -100,6 +103,11 @@
     <Compile Include="Membership\UserTimeEntity.cs" />
     <Compile Include="Membership\日志.cs" />
     <Compile Include="Membership\日志.Biz.cs">
+    </Compile>
+    <Compile Include="Membership\生成实体类.cs">
+      <AutoGen>True</AutoGen>
+      <DesignTime>True</DesignTime>
+      <DependentUpon>生成实体类.tt</DependentUpon>
     </Compile>
     <Compile Include="Membership\用户.Biz.cs">
     </Compile>
@@ -114,6 +122,11 @@
     <Compile Include="Membership\角色.cs" />
     <Compile Include="Membership\访问统计.Biz.cs" />
     <Compile Include="Membership\访问统计.cs" />
+    <Compile Include="Service\DbClient.cs" />
+    <Compile Include="Service\DbController.cs" />
+    <Compile Include="Service\DbParam.cs" />
+    <Compile Include="Service\DbServer.cs" />
+    <Compile Include="Service\LoginInfo.cs" />
     <Compile Include="Statistics\IStat.cs" />
     <Compile Include="Statistics\StatHelper.cs" />
     <Compile Include="Statistics\StatLevels.cs" />
@@ -210,6 +223,11 @@
     <Compile Include="Transform\ETL.cs" />
     <Compile Include="Web\EntityGrid.cs" />
     <Compile Include="Web\UserBehaviorModule..cs" />
+    <Compile Include="生成实体类.cs">
+      <AutoGen>True</AutoGen>
+      <DesignTime>True</DesignTime>
+      <DependentUpon>生成实体类.tt</DependentUpon>
+    </Compile>
     <None Include="Cache\readme.md" />
     <Compile Include="Transform\EntityTransform.cs" />
     <Compile Include="Tree\IEntityTreeSettting.cs" />
@@ -234,34 +252,29 @@
     </None>
     <Content Include="Extension\生成实体类.tt">
       <Generator>TextTemplatingFileGenerator</Generator>
-      <LastGenOutput>生成实体类.log</LastGenOutput>
+      <LastGenOutput>生成实体类.cs</LastGenOutput>
     </Content>
     <Content Include="生成实体类.tt">
       <Generator>TextTemplatingFileGenerator</Generator>
-      <LastGenOutput>生成实体类.log</LastGenOutput>
+      <LastGenOutput>生成实体类.cs</LastGenOutput>
     </Content>
-    <None Include="Extension\生成实体类.log">
-      <DependentUpon>生成实体类.tt</DependentUpon>
-      <AutoGen>True</AutoGen>
-      <DesignTime>True</DesignTime>
-    </None>
-    <None Include="Membership\生成实体类.log">
-      <AutoGen>True</AutoGen>
-      <DesignTime>True</DesignTime>
-      <DependentUpon>生成实体类.tt</DependentUpon>
-    </None>
     <None Include="UpdateInfo.txt" />
     <None Include="Membership\Member.xml">
       <SubType>Designer</SubType>
     </None>
     <Content Include="Membership\生成实体类.tt">
       <Generator>TextTemplatingFileGenerator</Generator>
-      <LastGenOutput>生成实体类.log</LastGenOutput>
+      <LastGenOutput>生成实体类.cs</LastGenOutput>
     </Content>
     <Content Include="Sync\同步机制.txt" />
     <None Include="说明.txt" />
   </ItemGroup>
-  <ItemGroup />
+  <ItemGroup>
+    <ProjectReference Include="..\NewLife.Core\NewLife.Core.csproj">
+      <Project>{5813c22e-eeb3-4dee-a45c-bb218041193a}</Project>
+      <Name>NewLife.Core</Name>
+    </ProjectReference>
+  </ItemGroup>
   <ItemGroup>
     <Service Include="{508349B6-6B84-4DF5-91F0-309BEEBAD82D}" />
   </ItemGroup>

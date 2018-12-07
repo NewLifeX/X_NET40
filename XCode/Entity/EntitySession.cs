@@ -121,27 +121,8 @@ namespace XCode
         {
             get
             {
-                if (_FormatedTableName.IsNullOrEmpty())
-                {
-                    var str = TableName;
+                if (_FormatedTableName.IsNullOrEmpty()) _FormatedTableName = Dal.Db.FormatTableName(TableName);
 
-                    // 检查自动表前缀
-                    var db = Dal.Db;
-                    var pf = db.TablePrefix;
-                    if (!pf.IsNullOrEmpty() && !str.StartsWithIgnoreCase(pf)) str = pf + str;
-
-                    str = db.FormatName(str);
-
-                    // 特殊处理Oracle数据库，在表名前加上方案名（用户名）
-                    if (!str.Contains("."))
-                    {
-                        // 角色名作为点前缀来约束表名，支持所有数据库
-                        var owner = db.Owner;
-                        if (!owner.IsNullOrEmpty()) str = Dal.Db.FormatName(owner) + "." + str;
-                    }
-
-                    _FormatedTableName = str;
-                }
                 return _FormatedTableName;
             }
         }
@@ -462,7 +443,14 @@ namespace XCode
         ISingleEntityCache IEntitySession.SingleCache => SingleCache;
 
         /// <summary>总记录数，小于1000时是精确的，大于1000时缓存10秒</summary>
-        public Int32 Count => (Int32)LongCount;
+        public Int32 Count
+        {
+            get
+            {
+                var v = LongCount;
+                return v > Int32.MaxValue ? Int32.MaxValue : (Int32)v;
+            }
+        }
 
         private DateTime _NextCount;
         /// <summary>总记录数较小时，使用静态字段，较大时增加使用Cache</summary>
@@ -686,9 +674,9 @@ namespace XCode
 
         private void DataChange(String reason)
         {
-            var tr = GetTran();
-            // 实体添删改时，有修改缓存，数据变更事件里不需要再次清空
-            if (tr == null || tr.Count == 0) ClearCache(reason);
+            //var tr = GetTran();
+            //// 实体添删改时，有修改缓存，数据变更事件里不需要再次清空
+            //if (tr == null || tr.Count == 0) ClearCache(reason);
 
             _OnDataChange?.Invoke(ThisType);
         }

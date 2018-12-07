@@ -14,6 +14,7 @@ using NewLife.Reflection;
 using NewLife.Threading;
 using NewLife.Windows;
 using XCoder;
+using XCoder.XNet;
 #if !NET4
 using TaskEx = System.Threading.Tasks.Task;
 #endif
@@ -176,12 +177,16 @@ namespace XNet
                     _Server = new NetServer();
                     break;
                 case WorkModes.UDP_Server:
-                    _Server = new NetServer();
-                    _Server.ProtocolType = NetType.Udp;
+                    _Server = new NetServer
+                    {
+                        ProtocolType = NetType.Udp
+                    };
                     break;
                 case WorkModes.TCP_Server:
-                    _Server = new NetServer();
-                    _Server.ProtocolType = NetType.Tcp;
+                    _Server = new NetServer
+                    {
+                        ProtocolType = NetType.Tcp
+                    };
                     break;
                 case WorkModes.TCP_Client:
                     _Client = new TcpSession();
@@ -240,7 +245,7 @@ namespace XNet
 
             cfg.Save();
 
-            _timer = new TimerX(ShowStat, null, 5000, 5000);
+            _timer = new TimerX(ShowStat, null, 5000, 5000) { Async = true };
         }
 
         void Disconnect()
@@ -345,6 +350,7 @@ namespace XNet
             }
         }
 
+        private Task _Send;
         private void btnSend_Click(Object sender, EventArgs e)
         {
             var str = txtSend.Text;
@@ -379,14 +385,6 @@ namespace XNet
                 }
                 else
                 {
-                    // 多线程测试
-                    //Parallel.For(0, ths, n =>
-                    //{
-                    //    var client = _Client.Remote.CreateRemote();
-                    //    client.StatSend = _Client.StatSend;
-                    //    client.StatReceive = _Client.StatReceive;
-                    //    client.SendMulti(buf, count, sleep);
-                    //});
                     var any = _Client.Local.Address.IsAny();
                     var list = new List<ISocketClient>();
                     for (var i = 0; i < ths; i++)
@@ -399,16 +397,14 @@ namespace XNet
 
                         list.Add(client);
                     }
-                    Parallel.For(0, ths, n =>
+                    var ts = new List<Task>();
+                    for (var i = 0; i < ths; i++)
                     {
-                        var client = list[n];
-                        client.SendMulti(pk, count, sleep);
-                        //try
-                        //{
-                        //    client.Open();
-                        //}
-                        //catch { }
-                    });
+                        var task = list[i].SendConcurrency(pk, count, sleep);
+                        ts.Add(task);
+                    }
+
+                    _Send = TaskEx.WhenAll(ts);
                 }
             }
             else if (_Server != null)
@@ -572,8 +568,7 @@ namespace XNet
 
         static NetServer GetServer(String name)
         {
-            Type t = null;
-            if (!GetNetServers().TryGetValue(name, out t)) return null;
+            if (!GetNetServers().TryGetValue(name, out var t)) return null;
 
             return t.CreateInstance() as NetServer;
         }

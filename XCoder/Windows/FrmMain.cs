@@ -11,7 +11,6 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using NewLife.Log;
-using NewLife.Net;
 using NewLife.Reflection;
 using XCode.DataAccessLayer;
 using XTemplate.Templating;
@@ -260,7 +259,7 @@ namespace XCoder
                 //{
                 if (dal.Db.CreateMetaData().MetaDataCollections.Contains("Databases"))
                 {
-                    dt = dal.Db.CreateSession().GetSchema("Databases", null);
+                    dt = dal.Db.CreateSession().GetSchema(null, "Databases", null);
                 }
                 //}
                 //finally { DAL.ShowSQL = old; }
@@ -268,8 +267,10 @@ namespace XCoder
                 if (dt == null) return;
 
                 var dbprovider = dal.DbType.ToString();
-                var builder = new DbConnectionStringBuilder();
-                builder.ConnectionString = dal.ConnStr;
+                var builder = new DbConnectionStringBuilder
+                {
+                    ConnectionString = dal.ConnStr
+                };
 
                 // 统计库名
                 var n = 0;
@@ -397,7 +398,7 @@ namespace XCoder
                 return;
             }
             var list = source as List<IDataTable>;
-            if (list[0].DbType == DatabaseType.SqlServer) // 增加对SqlServer 2000的特殊处理  ahuang
+            if (list != null && list.Count > 0 && list[0].DbType == DatabaseType.SqlServer) // 增加对SqlServer 2000的特殊处理  ahuang
             {
                 //list.Remove(list.Find(delegate(IDataTable p) { return p.Name == "dtproperties"; }));
                 //list.Remove(list.Find(delegate(IDataTable p) { return p.Name == "sysconstraints"; }));

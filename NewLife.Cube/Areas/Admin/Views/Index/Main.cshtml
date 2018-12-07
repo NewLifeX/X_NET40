@@ -11,7 +11,7 @@
     ViewBag.Title = "服务器信息";
 
     var asm = Assembly.GetExecutingAssembly();
-    var att = asm.GetCustomAttribute<TargetFrameworkAttribute>();
+    var att = AttributeX.GetCustomAttribute<TargetFrameworkAttribute>(asm);
     var ver = att.FrameworkDisplayName ?? att.FrameworkName;
     var req = HttpContext.Current.Request;
 
